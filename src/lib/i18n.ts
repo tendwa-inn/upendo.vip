@@ -126,8 +126,6 @@ const resources = {
       'report.reasons.fakeProfile': 'Catfishing / Fake Profile',
       'report.reasons.harassment': 'Harassment or Hate Speech',
       'report.reasons.other': 'Other',
-      'swipe.mode.smart': 'Smart',
-      'swipe.mode.random': 'Random',
       // Chat conversation
       'chat.onlineNow': 'Online now',
       'chat.activeAgo': 'Active {{time}}',
