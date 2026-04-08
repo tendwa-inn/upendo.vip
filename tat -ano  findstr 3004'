@@ -1,0 +1,7 @@
+[33mf3dcef1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{0}: reset: moving to f3dcef1
+[33m8b783fd[m HEAD@{1}: reset: moving to 8b783fd
+[33m8b783fd[m HEAD@{2}: commit: Initial commit
+[33mf3dcef1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{3}: commit: feat: Implement a wide range of new features and enhancements
+[33m67328c1[m HEAD@{4}: commit: feat: UI improvements and new features
+[33m03ab05b[m HEAD@{5}: Branch: renamed refs/heads/master to refs/heads/main
+[33m03ab05b[m HEAD@{7}: commit (initial): Initial commit of the Upendo application

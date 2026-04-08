@@ -1,0 +1,49 @@
+import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useNotificationStore } from '../stores/notificationStore';
+import NotificationItem from '../components/notifications/NotificationItem';
+import { ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useAuthStore } from '../stores/authStore';
+
+const NotificationsPage: React.FC = () => {
+  const { notifications, unreadCount, fetchNotifications } = useNotificationStore();
+  const { t } = useTranslation();
+  const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
+  const isVip = acct === 'vip';
+  const isPro = acct === 'pro';
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  return (
+    <div className={`text-white min-h-screen ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-stone-900'}`}>
+      <div className={`p-4 pt-safe-top border-b border-white/10 flex items-center justify-between ${isVip ? 'bg-black' : isPro ? 'bg-[#071521]' : ''}`}>
+        <Link to="/find" className="p-2">
+          <ArrowLeft className="w-6 h-6" />
+        </Link>
+        <h1 className="text-2xl font-bold">{t('notifications')}</h1>
+        <button
+          onClick={() => {/* TODO: Implement clearAllNotifications */}}
+          className={`text-sm hover:underline ${isVip ? 'text-amber-400' : isPro ? 'text-[#ff7f50]' : 'text-pink-500'}`}
+        >{t('clearAll')}</button>
+      </div>
+
+      <div className="p-4 flex justify-between items-center">
+      </div>
+
+      <div className="space-y-2">
+        {notifications.length > 0 ? (
+          notifications.map(notification => (
+            <NotificationItem key={notification.id} notification={notification} />
+          ))
+        ) : (
+          <p className="text-center text-gray-400 mt-8">{t('noNotificationsYet') || 'No notifications yet.'}</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default NotificationsPage;
