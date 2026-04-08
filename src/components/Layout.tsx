@@ -134,7 +134,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div
             className="absolute inset-0"
             style={{
-              backgroundImage: 'url(/Logo-White.png)',
               backgroundSize: 'contain',
               backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat',
