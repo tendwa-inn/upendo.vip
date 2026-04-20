@@ -14,14 +14,23 @@ import { useNavigate } from 'react-router-dom';
 
 const CreateProfilePage: React.FC = () => {
   const { step, prevStep } = useOnboardingStore();
-  const { profile } = useAuthStore();
+  const { profile, applyPromoCode } = useAuthStore();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if ((profile as any)?.onboarding_completed) {
+    const savedPromoCode = localStorage.getItem('promoCode');
+    if (savedPromoCode) {
+      applyPromoCode(savedPromoCode);
+      // Clear the promo code so it's only used once
+      localStorage.removeItem('promoCode');
+    }
+  }, [applyPromoCode]);
+
+  useEffect(() => {
+    if (profile && profile.onboarding_completed) {
       navigate('/find', { replace: true });
     }
-  }, [profile, step, navigate]);
+  }, [profile, navigate]);
 
   const handleBack = () => {
     if (step === 1) {

@@ -42,20 +42,31 @@ const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
     const swipedIds = new Set(swipedRes.data?.map(s => s.liked_id) || []);
 
     // 2. Filter with console logs to see WHERE profiles are being dropped
-    const baseMatches = (matchesRes.data || []).filter(p => {
-      const hasPhotos = p.photos?.length > 0;
-      const hasLocation = !!p.location_name;
-      const alreadySwiped = swipedIds.has(p.id);
-
-      // Debugging Tip: Uncomment the line below to see why users are hidden
-      // console.log(`User ${p.id}: Photos:${hasPhotos}, Loc:${hasLocation}, Swiped:${alreadySwiped}`);
-
-      return hasPhotos && hasLocation && !alreadySwiped;
+    const raw = matchesRes.data || []; 
+ 
+    console.log("🔥 RAW PROFILES FROM DB:", raw); 
+ 
+    const baseMatches = raw.filter(p => { 
+      console.log("➡️ Checking profile:", p.id); 
+ 
+      const alreadySwiped = swipedIds.has(p.id); 
+      const hasPhotos = Array.isArray(p.photos); 
+      const photosCount = p.photos?.length || 0; 
+ 
+      console.log({ 
+        id: p.id, 
+        alreadySwiped, 
+        hasPhotos, 
+        photosCount, 
+        photosValue: p.photos 
+      }); 
+ 
+      return !alreadySwiped && hasPhotos && photosCount > 0; 
     });
 
     const ids = baseMatches.map(p => p.id);
     const profilesRes = ids.length
-      ? await supabase.from('profiles').select('id,age,dob,date_of_birth,bio').in('id', ids)
+      ? await supabase.from('profiles').select('id,age,dob,date_of_birth,bio,relationship_intent,hereFor,height,religion,occupation,kids').in('id', ids)
       : { data: [], error: null };
 
     if ((profilesRes as any).error) {

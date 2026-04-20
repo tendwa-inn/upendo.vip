@@ -271,6 +271,11 @@ const FindPage: React.FC = () => {
   const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
   const isVip = acct === 'vip';
   const isPro = acct === 'pro';
+
+  const headerBg = activeTab !== 'discover'
+    ? isVip ? 'bg-black' : isPro ? 'bg-[#071521]' : 'bg-[#22090E]'
+    : 'bg-transparent';
+
   if (isLoading) {
     return (
       <div className={`fixed inset-0 overflow-hidden text-white ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'} flex flex-col items-center justify-center`}>
@@ -286,10 +291,10 @@ const FindPage: React.FC = () => {
     );
   }
 
-  const missingFields = getMissingFields();
-  if (missingFields.length > 0) {
-    return <ProfileCompletionWall missingFields={missingFields} />;
-  }
+  // const missingFields = getMissingFields();
+  // if (missingFields.length > 0) {
+  //   return <ProfileCompletionWall missingFields={missingFields} />;
+  // }
 
 
 
@@ -298,67 +303,71 @@ const FindPage: React.FC = () => {
   const currentMatch = orderedPotentialMatches[currentCardIndex];
 
   return (
-    <div className={`fixed inset-0 overflow-hidden overscroll-none text-white ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
+    <div className="fixed inset-0 overflow-hidden overscroll-none text-white">
       {isMatchAnimationVisible && matchedUser && (
         <MatchAnimation matchedUser={matchedUser} onClose={hideMatchAnimation} />
       )}
 
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-20 w-full max-w-md mx-auto flex items-center p-4 pt-safe-top">
-        <button onClick={() => setIsFilterModalOpen(true)} className="p-2"><SlidersHorizontal className="w-6 h-6" /></button>
-        <h1 className="text-2xl font-bold flex-1 text-center">{t('findTitle')}</h1>
-        <Link to="/notifications" className="p-2 relative">
-          <Bell className="w-6 h-6" />
-          {unreadCount > 0 && (
-            <div className={`absolute top-1 right-1 w-4 h-4 rounded-full text-xs flex items-center justify-center ${
-              isVip ? 'bg-amber-400 text-black' : isPro ? 'bg-[#ff7f50] text-black' : 'bg-pink-500'
-            }`}>
-              {unreadCount}
-            </div>
-          )}
-        </Link>
+      <div className={`absolute top-0 left-0 right-0 z-20 ${headerBg}`}>
+        <div className="w-full max-w-md mx-auto flex items-center p-4 pt-safe-top">
+          <button onClick={() => setIsFilterModalOpen(true)} className="p-2"><SlidersHorizontal className="w-6 h-6" /></button>
+          <h1 className="text-2xl font-bold flex-1 text-center">{t('findTitle')}</h1>
+          <Link to="/notifications" className="p-2 relative">
+            <Bell className="w-6 h-6" />
+            {unreadCount > 0 && (
+              <div className={`absolute top-1 right-1 w-4 h-4 rounded-full text-xs flex items-center justify-center ${
+                isVip ? 'bg-amber-400 text-black' : isPro ? 'bg-[#ff7f50] text-black' : 'bg-pink-500'
+              }`}>
+                {unreadCount}
+              </div>
+            )}
+          </Link>
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="absolute top-16 left-0 right-0 z-20 w-full max-w-md mx-auto px-4">
-        <div className="flex justify-center items-center gap-8">
-          <button
-            onClick={() => { setActiveTab('views'); markViewsAsViewed(); }}
-            className={`relative text-sm font-medium transition-all flex items-center gap-1 ${
-              activeTab === 'views' 
-                ? 'text-yellow-400 border-b-2 border-yellow-400 pb-1' 
-                : 'text-white/70 hover:text-white'
-            }`}>
-            {t('views')}
-            {hasNewViews && usersWhoViewedMe.length > 0 && (
-              <div className="absolute -top-1 -right-2 w-3 h-3 bg-yellow-500 rounded-full"></div>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('discover')}
-            className={`text-sm font-medium transition-all ${
-              activeTab === 'discover' 
-                ? 'text-pink-400 border-b-2 border-pink-400 pb-1' 
-                : 'text-white/70 hover:text-white'
-            }`}
-          >{t('swipes')}</button>
-          <button
-            onClick={() => { setActiveTab('likes'); markLikesAsViewed(); }}
-            className={`relative text-sm font-medium transition-all flex items-center gap-1 ${
-              activeTab === 'likes' 
-                ? 'text-green-400 border-b-2 border-green-400 pb-1' 
-                : 'text-white/70 hover:text-white'
-            }`}>
-            {t('likes')}
-            {hasNewLikes && usersWhoLikedMe.length > 0 && (
-              <div className="absolute -top-1 -right-2 w-3 h-3 bg-green-500 rounded-full"></div>
-            )}
-          </button>
+      <div className={`absolute top-16 left-0 right-0 z-20 ${headerBg}`}>
+        <div className="w-full max-w-md mx-auto px-4">
+          <div className="flex justify-center items-center gap-8">
+            <button
+              onClick={() => { setActiveTab('views'); markViewsAsViewed(); }}
+              className={`relative text-sm font-medium transition-all flex items-center gap-1 ${
+                activeTab === 'views' 
+                  ? 'text-yellow-400 border-b-2 border-yellow-400 pb-1' 
+                  : 'text-white/70 hover:text-white'
+              }`}>
+              {t('views')}
+              {hasNewViews && usersWhoViewedMe.length > 0 && (
+                <div className="absolute -top-1 -right-2 w-3 h-3 bg-yellow-500 rounded-full"></div>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('discover')}
+              className={`text-sm font-medium transition-all ${
+                activeTab === 'discover' 
+                  ? 'text-pink-400 border-b-2 border-pink-400 pb-1' 
+                  : 'text-white/70 hover:text-white'
+              }`}
+            >{t('swipes')}</button>
+            <button
+              onClick={() => { setActiveTab('likes'); markLikesAsViewed(); }}
+              className={`relative text-sm font-medium transition-all flex items-center gap-1 ${
+                activeTab === 'likes' 
+                  ? 'text-green-400 border-b-2 border-green-400 pb-1' 
+                  : 'text-white/70 hover:text-white'
+              }`}>
+              {t('likes')}
+              {hasNewLikes && usersWhoLikedMe.length > 0 && (
+                <div className="absolute -top-1 -right-2 w-3 h-3 bg-green-500 rounded-full"></div>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Tab Content */}
-      <div className="absolute top-24 left-0 right-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] overflow-hidden">
         {activeTab === 'discover' && (
           <div className="h-full relative">
             {/* Photo Progress */}
@@ -396,7 +405,7 @@ const FindPage: React.FC = () => {
               </AnimatePresence>
               
               {currentCardIndex >= potentialMatches.length && !isLoading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+                <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-6 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
                   <h2 className="text-2xl font-bold mb-2">{t('noMoreProfiles')}</h2>
                   <p className="text-gray-300">{t('checkBackLater')}</p>
                 </div>
@@ -406,10 +415,10 @@ const FindPage: React.FC = () => {
         )}
 
         {activeTab === 'views' && (
-          <div className="h-full overflow-y-auto p-4 pb-20">
+          <div className={`h-full overflow-y-auto p-4 pb-20 mt-16 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
             <h2 className="text-xl font-bold mb-4">{t('views')}</h2>
             {usersWhoViewedMe.length === 0 ? (
-              <p className="text-white/70">{t('noViewsYet') || 'No one has viewed your profile yet.'}</p>
+              <p className="text-center text-gray-400 mt-8">No Views Yet</p>
             ) : (
               <div className="space-y-3">
                 {usersWhoViewedMe.map((user) => (
@@ -421,10 +430,10 @@ const FindPage: React.FC = () => {
         )}
 
         {activeTab === 'likes' && (
-          <div className="h-full overflow-y-auto p-4 pb-20">
+          <div className={`h-full overflow-y-auto p-4 pb-20 mt-16 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
             <h2 className="text-xl font-bold mb-4">{t('likes')}</h2>
             {usersWhoLikedMe.length === 0 ? (
-              <p className="text-white/70">{t('noLikesYet') || 'No one has liked you yet.'}</p>
+              <p className="text-center text-gray-400 mt-8">No Likes Yet</p>
             ) : (
               <div className="space-y-3">
                 {usersWhoLikedMe.map((user) => (

@@ -48,6 +48,7 @@ const ProfilePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState((profile as any)?.notifications_enabled ?? true);
   const [isLangMenuOpen, setLangMenuOpen] = useState(false);
+  const [isLocationScopeMenuOpen, setLocationScopeMenuOpen] = useState(false);
   const isProfileComplete = React.useMemo(() => {
     return !!profile?.bio && !!profile?.location?.name && !!profile?.hereFor && (profile?.photos?.length || 0) >= 3;
   }, [profile]);
@@ -90,7 +91,7 @@ const ProfilePage: React.FC = () => {
 
     try {
       await updateUserProfile({ [field]: value });
-      toast.success('Profile updated!');
+      // Success toast is handled by updateUserProfile function
     } catch (error) {
       toast.error('Failed to update profile.');
     }
@@ -103,36 +104,46 @@ const ProfilePage: React.FC = () => {
     try {
       navigator.geolocation.getCurrentPosition(async (position) => {
         const { latitude, longitude } = position.coords;
+        const { user, checkUser } = useAuthStore.getState();
+
+        if (!user) {
+          toast.error("You must be logged in to update your location.");
+          setIsLoading(false);
+          return;
+        }
+
         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
         const data = await response.json();
         
         if (data && data.address) {
           const locationName = `${data.address.city || data.address.town || ''}, ${data.address.country}`;
-          await updateUserProfile({
-            location: { 
-              name: locationName,
-              longitude: longitude,
-              latitude: latitude
-            }
+          const locationData = {
+            name: locationName,
+            longitude,
+            latitude,
+          };
+
+          // Use the centralized updateUserProfile function
+          await updateUserProfile({ location: locationData }, () => {
+            toast.success("Location updated successfully!");
           });
-          setIsLoading(false); // Add this line
+
+          setIsLoading(false);
         } else {
           toast.error("Could not determine your location.");
-          setIsLoading(false); // And this one
+          setIsLoading(false);
         }
       }, (error) => {
-        toast.error("Could not access your location. Please enable location services in your browser.");
+        toast.error(`Could not access your location: ${error.message}`);
         setIsLoading(false);
       });
     } catch (error) {
-      toast.error("Failed to update location.");
-      setIsLoading(false); // And this one
-    } finally {
-      // The finally block is no longer necessary as we handle it in all branches
+      toast.error("An unexpected error occurred while fetching location data.");
+      setIsLoading(false);
     }
   };
 
-  const ProfileField = ({ field, value, label, isRequired = false }) => (
+  const ProfileField = ({ field, value, label, isRequired = false, alwaysEditable = false }) => (
     <div className="mb-4">
       <div className="flex justify-between items-center">
         <h4 className="text-sm font-medium text-gray-300">{label}</h4>
@@ -140,7 +151,7 @@ const ProfilePage: React.FC = () => {
           {!value && isRequired && (
             <span className="text-xs text-red-400">{i18n.t('required')}</span>
           )}
-          <button onClick={() => setEditingField(field)} className="p-1.5 text-gray-400 hover:text-white">
+          <button onClick={() => setEditingField(field)} className="p-1.5 text-gray-400 hover:text-white" disabled={!alwaysEditable && !!value}>
             {value ? <Edit3 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
           </button>
         </div>
@@ -523,7 +534,7 @@ const ProfilePage: React.FC = () => {
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-white mb-4">{i18n.t('aboutMe')}</h3>
             <ProfileField field="bio" value={profile.bio} label={i18n.t('aboutMe')} isRequired={true} />
-            <ProfileField field="hereFor" value={profile.hereFor} label={i18n.t('profile.sections.hereFor')} isRequired={false} />
+            <ProfileField field="hereFor" value={profile.hereFor} label={i18n.t('profile.sections.hereFor')} isRequired={false} alwaysEditable={true} />
             <ProfileField field="occupation" value={(profile as any).occupation} label={i18n.t('work')} isRequired={false} />
             <ProfileField field="education" value={profile.education} label={i18n.t('education')} isRequired={false} />
             <ProfileField field="height" value={profile.height} label={i18n.t('height')} isRequired={false} />
@@ -535,43 +546,7 @@ const ProfilePage: React.FC = () => {
             <ProfileField field="firstDate" value={profile.firstDate} label={i18n.t('profile.details.firstDate')} isRequired={false} />
           </div>
 
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-white mb-4">{i18n.t('spotlights.title')}</h3>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="p-4 bg-white/50 rounded-2xl">
-                <h4 className="font-semibold text-white mb-2">{i18n.t('spotlights.delicacies')}</h4>
-                {profile.aboutMe?.delicacies?.map((item, index) => (
-                  <div key={index} className="flex items-center space-x-3 mb-2">
-                    <p className="text-gray-300">{item.food}</p>
-                  </div>
-                ))}
-                {!profile.aboutMe?.delicacies?.length && (
-                  <p className="text-gray-400 text-sm">{i18n.t('spotlights.noDelicacies')}</p>
-                )}
-                {isEditing && (
-                  <button className="w-full mt-2 py-2 border-2 border-dashed border-gray-500 text-gray-300 rounded-lg hover:bg-white/10 transition-colors">
-                    <Plus className="w-4 h-4 inline mr-2" /> {i18n.t('spotlights.addDelicacy')}
-                  </button>
-                )}
-              </div>
 
-              <div className="p-4 bg-white/50 rounded-2xl">
-                <h4 className="font-semibold text-white mb-2">{i18n.t('spotlights.travel')}</h4>
-                {profile.aboutMe?.travel?.length > 0 ? profile.aboutMe.travel.map((item, index) => (
-                  <div key={index} className="mb-2">
-                    <p className="font-semibold text-gray-200">{item.place}</p>
-                  </div>
-                )) : (
-                  <p className="text-gray-400 text-sm">{i18n.t('spotlights.noTravel')}</p>
-                )}
-                {isEditing && (
-                  <button className="w-full mt-2 py-2 border-2 border-dashed border-gray-500 text-gray-300 rounded-lg hover:bg-white/10 transition-colors">
-                    <Plus className="w-4 h-4 inline mr-2" /> {i18n.t('spotlights.addTravel')}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
 
         </motion.div>
 
@@ -761,45 +736,37 @@ const ProfilePage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-white/20 rounded-xl">
+            <div className="flex items-center justify-between p-3 bg-white/20 rounded-xl relative">
               <div className="flex items-center space-x-3">
                 <Settings className="w-5 h-5 text-gray-300" />
-                <span className="text-white">{i18n.t('settings.locationScope')}</span>
+                <span className="text-white">Location Scope</span>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { try { localStorage.setItem('locationScope','nearby'); } catch {}; toast.success(i18n.t('location.scope.nearby') || 'Nearby'); }}
-                  className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-                    (localStorage.getItem('locationScope') || 'nearby') === 'nearby'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-white/10 text-white/70 hover:bg-white/20'
-                  }`}
-                >
-                  {i18n.t('location.scope.nearby') || 'Nearby'}
-                </button>
-                <button
-                  onClick={() => { try { localStorage.setItem('locationScope','country'); } catch {}; toast.success(i18n.t('location.scope.country') || 'Country'); }}
-                  disabled={!isPro && !isVip}
-                  className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-                    (localStorage.getItem('locationScope') === 'country')
-                      ? 'bg-white/20 text-white'
-                      : 'bg-white/10 text-white/70 hover:bg-white/20'
-                  } ${(!isPro && !isVip) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {i18n.t('location.scope.country') || 'Country'}
-                </button>
-                <button
-                  onClick={() => { try { localStorage.setItem('locationScope','global'); } catch {}; toast.success(i18n.t('location.scope.global') || 'Global'); }}
-                  disabled={!isVip}
-                  className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-                    (localStorage.getItem('locationScope') === 'global')
-                      ? 'bg-white/20 text-white'
-                      : 'bg-white/10 text-white/70 hover:bg-white/20'
-                  } ${(!isVip) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {i18n.t('location.scope.global') || 'Global'}
-                </button>
-              </div>
+              <button
+                onClick={() => setLocationScopeMenuOpen(!isLocationScopeMenuOpen)}
+                className="px-4 py-1 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors duration-300 text-sm capitalize"
+              >
+                {localStorage.getItem('locationScope') || 'nearby'}
+              </button>
+              {isLocationScopeMenuOpen && (
+                <div className="absolute right-3 top-full mt-2 w-48 bg-white/10 backdrop-blur-lg rounded-xl p-2 text-left z-10">
+                  {['nearby', 'country', 'global'].map(scope => (
+                    <button
+                      key={scope}
+                      onClick={() => {
+                        try { localStorage.setItem('locationScope', scope); } catch {};
+                        toast.success(`Location scope set to ${scope}`);
+                        setLocationScopeMenuOpen(false);
+                      }}
+                      disabled={(scope === 'country' && !isPro && !isVip) || (scope === 'global' && !isVip)}
+                      className={`block w-full text-left px-3 py-1.5 rounded-md hover:bg-white/20 transition-colors capitalize ${
+                        localStorage.getItem('locationScope') === scope ? 'bg-white/20' : ''
+                      } ${((scope === 'country' && !isPro && !isVip) || (scope === 'global' && !isVip)) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {scope}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between p-3 bg-white/20 rounded-xl">
@@ -894,9 +861,7 @@ const ProfilePage: React.FC = () => {
           </button>
         </motion.div>
       </div>
-      {isCompletionModalOpen && (
-        <ProfileCompletionModal isOpen={isCompletionModalOpen} onClose={handleCompletionModalClose} />
-      )}
+      
       {isPhotoUploaderOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
           <div className="bg-gradient-to-b from-[#2E0C13] to-[#22090E] rounded-2xl p-6 w-full max-w-md text-white border border-white/10">

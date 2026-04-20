@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase';
+import { supabase } from '../lib/supabaseClient';
 
 export const wordFilterService = {
   // Get all filtered words

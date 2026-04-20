@@ -37,7 +37,7 @@ const usePresenceStore = create<PresenceState>((set) => ({
     const interval = setInterval(async () => {
       await supabase
         .from('profiles')
-        .update({ last_active: new Date().toISOString() })
+        .update({ last_active: new Date().toISOString() }) // ONLY update last_active
         .eq('id', currentUser.id);
     }, 30000); // Every 30 seconds
 

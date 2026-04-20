@@ -89,7 +89,7 @@ const ConnectionsPage: React.FC = () => {
           </>
         ) : (
           <>
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mb-4"></div>
+            <Ghost className="w-14 h-14 text-pink-500 animate-spin mb-4 drop-shadow-[0_0_12px_rgba(236,72,153,0.9)]" />
             <p className="text-white/70 text-sm">{t('loadingConnections')}</p>
           </>
         )}

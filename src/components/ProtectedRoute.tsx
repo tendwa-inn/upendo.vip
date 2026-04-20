@@ -2,11 +2,11 @@ import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 
-const ProtectedRoute: React.FC = () => {
-  const { user } = useAuthStore();
+const ProtectedRoute = () => {
+  const { session } = useAuthStore.getState();
 
-  if (!user || (user.subscription !== 'admin')) {
-    return <Navigate to="/" replace />;
+  if (!session) {
+    return <Navigate to="/login" replace />;
   }
 
   return <Outlet />;

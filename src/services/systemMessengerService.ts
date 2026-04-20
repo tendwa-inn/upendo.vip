@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase';
+import { supabase } from '../lib/supabaseClient';
 
 // Define the shape of a system message based on your new table
 interface SystemMessage {

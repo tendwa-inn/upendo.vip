@@ -7,6 +7,7 @@ import VerificationBadge from '../VerificationBadge';
 import { useUiStore } from '../../stores/uiStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useTranslation } from 'react-i18next';
+import usePresenceStore from '../../stores/presenceStore'; // Import presence store
 
 interface SwipeCardProps {
   user: User;
@@ -35,7 +36,6 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const navigate = useNavigate();
   const { profile: currentUser } = useAuthStore();
   const { buttonStyle, setButtonStyle } = useUiStore();
-  const [activeButton, setActiveButton] = useState<string | null>(null);
   const [isBioExpanded, setIsBioExpanded] = useState(false);
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   const { t } = useTranslation();
@@ -55,6 +55,10 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
   const userAny = user as any;
 
+  const { onlineUsers } = usePresenceStore();
+  const isOnline = !!onlineUsers[user.id];
+  const accountType = (user as any).accountType || (user as any).account_type;
+
   const dob =
     userAny.date_of_birth ||
     userAny.dob ||
@@ -68,7 +72,45 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   if (import.meta.env.DEV) {
     console.log('DOB:', dob);
     console.log('Calculated Age:', calculatedAge);
+    console.log('User hereFor:', user.hereFor);
+    console.log('User here_for:', (user as any).here_for);
+    console.log('User interested_in:', (user as any).interested_in);
+    console.log('User relationship_intent:', (user as any).relationship_intent);
+    console.log('User data keys:', Object.keys(user));
+    console.log('User data:', user);
   }
+
+  // Handle different possible field names and formats for user's purposes
+  const getUserHereFor = () => {
+    const userAny = user as any;
+    const intent = userAny.relationship_intent || userAny.interested_in;
+
+    if (intent && typeof intent === 'string' && intent.trim()) {
+      return [intent];
+    }
+
+    if (user.hereFor && Array.isArray(user.hereFor) && user.hereFor.length > 0) {
+      return user.hereFor;
+    }
+    
+    return [];
+  };
+
+  const userHereFor = getUserHereFor();
+
+  const getPurposeColor = (purpose: string) => {
+    switch (purpose) {
+      case 'Serious Relationship':
+        return 'bg-blue-800 text-blue-200';
+      case 'Hookups':
+      case 'Dating':
+        return 'bg-red-800 text-red-200';
+      case 'Friendship':
+        return 'bg-yellow-800 text-yellow-200';
+      default:
+        return 'bg-gray-700 text-white';
+    }
+  };
 
   const formatDistance = (distanceInMeters?: number | null) => {
     if (typeof distanceInMeters !== 'number' || !Number.isFinite(distanceInMeters)) return null;
@@ -79,16 +121,28 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const distanceMeters = (user as any).distance_meters ?? (user as any).distance;
   const distance = formatDistance(distanceMeters);
 
-  const formatHeight = (cm) => {
-    if (!cm) return null;
-    const inches = cm / 2.54;
-    const feet = Math.floor(inches / 12);
-    const remainingInches = Math.round(inches % 12);
-    return `${feet}'${remainingInches}" (${cm}cm)`;
-  };
+  const formatHeight = (heightValue: number | string) => {
+    if (!heightValue) return null;
 
-  const handlePressStart = (button: string) => setActiveButton(button);
-  const handlePressEnd = () => setActiveButton(null);
+    // If it's a string like "4' 10\" (147cm)", extract the feet and inches part.
+    if (typeof heightValue === 'string') {
+      const match = heightValue.match(/^(\d+'\d+")/);
+      if (match) {
+        return match[1];
+      }
+    }
+
+    // If it's a number (cm), convert it.
+    if (typeof heightValue === 'number') {
+      const inches = heightValue / 2.54;
+      const feet = Math.floor(inches / 12);
+      const remainingInches = Math.round(inches % 12);
+      return `${feet}'${remainingInches}"`;
+    }
+
+    // Fallback for unexpected formats.
+    return heightValue;
+  };
 
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-300, 300], [-30, 30]);
@@ -113,218 +167,67 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   if (!isActive) return null;
 
   const renderButtons = () => {
-    switch (buttonStyle) {
-      case 'white-clean':
-        return (
-          <div className="absolute top-48 right-4 flex flex-col items-center space-y-3 z-20">
-            <button
-              onClick={() => onSwipeRight(user.id)}
-              onMouseDown={() => handlePressStart('like')}
-              onMouseUp={handlePressEnd}
-              onTouchStart={() => handlePressStart('like')}
-              onTouchEnd={handlePressEnd}
-              className="flex flex-col items-center text-white font-bold text-xs space-y-1"
-            >
-              <Heart
-                className="w-8 h-8"
-                fill={activeButton === 'like' ? '#ec4899' : 'white'}
-                color={activeButton === 'like' ? '#ec4899' : 'white'}
-              />
-              <span>{t('swipe.like')}</span>
+    const styles = {
+      'white-clean': {
+        like: <Heart className="w-8 h-8" fill="white" />,
+        nope: <X className="w-8 h-8" />,
+        rewind: <RotateCcw className="w-8 h-8" />,
+        colorClass: () => 'text-white'
+      },
+      'upendo-color': {
+        like: <div className="w-9 h-9 rounded-full bg-pink-500 flex items-center justify-center shadow-lg"><Heart className="w-4 h-4" fill="white" /></div>,
+        nope: <div className="w-9 h-9 rounded-full bg-red-500 flex items-center justify-center shadow-lg"><X className="w-4 h-4" strokeWidth={3} /></div>,
+        rewind: <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center shadow-lg"><Undo2 className="w-4 h-4" /></div>,
+        colorClass: () => 'text-white'
+      },
+      'vintage': {
+        like: <Play className="w-8 h-8" />,
+        nope: <FastForward className="w-8 h-8" />,
+        rewind: <Rewind className="w-8 h-8" />,
+        colorClass: () => 'text-white'
+      }
+    };
+
+    const currentStyle = styles[buttonStyle] || styles['upendo-color'];
+
+    return (
+      <div className="absolute bottom-12 right-4 flex flex-col items-center gap-6 z-40">
+        <button onClick={() => onSwipeRight(user.id)} className="flex flex-col items-center gap-1 font-bold text-[9px] text-white">
+          {currentStyle.like}
+          <span>{t('swipe.like')}</span>
+        </button>
+        
+        <button onClick={() => onSwipeLeft(user.id)} className="flex flex-col items-center gap-1 font-bold text-[9px] text-white">
+          {currentStyle.nope}
+          <span>{t('swipe.nope')}</span>
+        </button>
+
+        <button onClick={onRewind} className="flex flex-col items-center gap-1 font-bold text-[9px] text-white">
+          {currentStyle.rewind}
+          <span>{t('swipe.rewind')}</span>
+        </button>
+        
+        <button onClick={() => setShowStyleMenu(!showStyleMenu)} className="flex flex-col items-center gap-1 font-bold text-[9px] text-white">
+          {currentStyle.more || <MoreHorizontal className="w-8 h-8" />}
+          <span>{t('swipe.more')}</span>
+        </button>
+        
+        {showStyleMenu && (
+          <div className="absolute right-12 top-0 bg-gray-800 rounded-xl p-3 shadow-xl z-50 min-w-[140px]">
+            <p className="text-xs text-gray-400 mb-2 font-semibold">{t('swipe.menu.buttonStyle')}</p>
+            <button onClick={() => { setButtonStyle('upendo-color'); setShowStyleMenu(false); }} className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'upendo-color' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+              {t('swipe.menu.upendoColor')}
             </button>
-            <button
-              onClick={() => onSwipeLeft(user.id)}
-              onMouseDown={() => handlePressStart('nope')}
-              onMouseUp={handlePressEnd}
-              onTouchStart={() => handlePressStart('nope')}
-              onTouchEnd={handlePressEnd}
-              className="flex flex-col items-center text-white font-bold text-xs space-y-1"
-            >
-              <X className={`w-8 h-8 ${activeButton === 'nope' ? 'text-red-500' : 'text-white'}`} strokeWidth={2.5} />
-              <span>{t('swipe.nope')}</span>
+            <button onClick={() => { setButtonStyle('white-clean'); setShowStyleMenu(false); }} className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'white-clean' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+              {t('swipe.menu.whiteClean')}
             </button>
-            <button
-              onClick={onRewind}
-              onMouseDown={() => handlePressStart('rewind')}
-              onMouseUp={handlePressEnd}
-              onTouchStart={() => handlePressStart('rewind')}
-              onTouchEnd={handlePressEnd}
-              className="flex flex-col items-center text-white font-bold text-xs space-y-1"
-            >
-              <RotateCcw className={`w-8 h-8 ${activeButton === 'rewind' ? 'text-yellow-500' : 'text-white'}`} strokeWidth={2.5} />
-              <span>{t('swipe.rewind')}</span>
+            <button onClick={() => { setButtonStyle('vintage'); setShowStyleMenu(false); }} className={`block w-full text-left px-3 py-2 rounded-lg text-sm ${buttonStyle === 'vintage' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+              {t('swipe.menu.vintage')}
             </button>
-            <button
-              onClick={() => setShowStyleMenu(!showStyleMenu)}
-              onMouseDown={() => handlePressStart('more')}
-              onMouseUp={handlePressEnd}
-              onTouchStart={() => handlePressStart('more')}
-              onTouchEnd={handlePressEnd}
-              className="flex flex-col items-center text-white font-bold text-xs space-y-1"
-            >
-              <MoreHorizontal className="w-8 h-8" />
-              <span>{t('swipe.more')}</span>
-            </button>
-            {showStyleMenu && (
-              <div className="absolute right-12 top-0 bg-gray-800 rounded-xl p-3 shadow-xl z-30 min-w-[140px]">
-                <p className="text-xs text-gray-400 mb-2 font-semibold">{t('swipe.menu.buttonStyle')}</p>
-                <button
-                  onClick={() => { setButtonStyle('upendo-color'); setShowStyleMenu(false); }}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'upendo-color' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                >
-                  {t('swipe.menu.upendoColor')}
-                </button>
-                <button
-                  onClick={() => { setButtonStyle('white-clean'); setShowStyleMenu(false); }}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'white-clean' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                >
-                  {t('swipe.menu.whiteClean')}
-                </button>
-                <button
-                  onClick={() => { setButtonStyle('vintage'); setShowStyleMenu(false); }}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm ${buttonStyle === 'vintage' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                >
-                  {t('swipe.menu.vintage')}
-                </button>
-              </div>
-            )}
           </div>
-        );
-      case 'vintage':
-        return (
-          <div className="absolute top-48 right-4 flex flex-col items-center space-y-3 z-20">
-            <button
-              onClick={() => onSwipeRight(user.id)}
-              onMouseDown={() => handlePressStart('play')}
-              onMouseUp={handlePressEnd}
-              onTouchStart={() => handlePressStart('play')}
-              onTouchEnd={handlePressEnd}
-              className="flex flex-col items-center text-white font-bold text-xs space-y-1"
-            >
-              <Play 
-                className={`w-8 h-8 ${activeButton === 'play' ? 'text-green-500' : 'text-white'}`} 
-                strokeWidth={2.5}
-              />
-              <span className={activeButton === 'play' ? 'text-green-500' : 'text-white'}>{t('swipe.play')}</span>
-            </button>
-            <button
-              onClick={() => onSwipeLeft(user.id)}
-              onMouseDown={() => handlePressStart('wind')}
-              onMouseUp={handlePressEnd}
-              onTouchStart={() => handlePressStart('wind')}
-              onTouchEnd={handlePressEnd}
-              className="flex flex-col items-center text-white font-bold text-xs space-y-1"
-            >
-              <FastForward 
-                className={`w-8 h-8 ${activeButton === 'wind' ? 'text-red-500' : 'text-white'}`} 
-                strokeWidth={2.5}
-              />
-              <span className={activeButton === 'wind' ? 'text-red-500' : 'text-white'}>{t('swipe.wind')}</span>
-            </button>
-            <button
-              onClick={onRewind}
-              onMouseDown={() => handlePressStart('rewind')}
-              onMouseUp={handlePressEnd}
-              onTouchStart={() => handlePressStart('rewind')}
-              onTouchEnd={handlePressEnd}
-              className="flex flex-col items-center text-white font-bold text-xs space-y-1"
-            >
-              <Rewind
-                className={`w-8 h-8 ${activeButton === 'rewind' ? 'text-yellow-500' : 'text-white'}`}
-                strokeWidth={2.5}
-              />
-              <span className={activeButton === 'rewind' ? 'text-yellow-500' : 'text-white'}>{t('swipe.rewind')}</span>
-            </button>
-            <button
-              onClick={() => setShowStyleMenu(!showStyleMenu)}
-              onMouseDown={() => handlePressStart('more')}
-              onMouseUp={handlePressEnd}
-              onTouchStart={() => handlePressStart('more')}
-              onTouchEnd={handlePressEnd}
-              className="flex flex-col items-center text-white font-bold text-xs space-y-1"
-            >
-              <MoreHorizontal className={`w-8 h-8 ${activeButton === 'more' ? 'text-yellow-500' : 'text-white'}`} />
-              <span className={activeButton === 'more' ? 'text-yellow-500' : 'text-white'}>{t('swipe.more')}</span>
-            </button>
-            {showStyleMenu && (
-              <div className="absolute right-12 top-0 bg-gray-800 rounded-xl p-3 shadow-xl z-30 min-w-[140px]">
-                <p className="text-xs text-gray-400 mb-2 font-semibold">{t('swipe.menu.buttonStyle')}</p>
-                <button
-                  onClick={() => { setButtonStyle('upendo-color'); setShowStyleMenu(false); }}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'upendo-color' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                >
-                  {t('swipe.menu.upendoColor')}
-                </button>
-                <button
-                  onClick={() => { setButtonStyle('white-clean'); setShowStyleMenu(false); }}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'white-clean' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                >
-                  {t('swipe.menu.whiteClean')}
-                </button>
-                <button
-                  onClick={() => { setButtonStyle('vintage'); setShowStyleMenu(false); }}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm ${buttonStyle === 'vintage' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                >
-                  {t('swipe.menu.vintage')}
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      case 'upendo-color':
-      default:
-        return (
-          <div className="absolute top-48 right-4 flex flex-col items-center space-y-3 z-20">
-            <button onClick={() => onSwipeRight(user.id)} className="flex flex-col items-center text-white font-bold text-xs space-y-1">
-              <div className="w-8 h-8 rounded-full bg-pink-500 flex items-center justify-center shadow-lg">
-                <Heart className="w-4 h-4" fill="white" />
-              </div>
-              <span>{t('swipe.like')}</span>
-            </button>
-            <button onClick={() => onSwipeLeft(user.id)} className="flex flex-col items-center text-white font-bold text-xs space-y-1">
-              <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center shadow-lg">
-                <X className="w-4 h-4" fill="white" strokeWidth={3} />
-              </div>
-              <span>{t('swipe.nope')}</span>
-            </button>
-            <button onClick={onRewind} className="flex flex-col items-center text-white font-bold text-xs space-y-1">
-              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
-                <Undo2 className="w-4 h-4" />
-              </div>
-              <span>{t('swipe.rewind')}</span>
-            </button>
-            <button onClick={() => setShowStyleMenu(!showStyleMenu)} className="flex flex-col items-center text-white font-bold text-xs space-y-1">
-              <div className="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center shadow-lg">
-                <MoreHorizontal className="w-4 h-4" />
-              </div>
-              <span>{t('swipe.more')}</span>
-            </button>
-            {showStyleMenu && (
-              <div className="absolute right-12 top-0 bg-gray-800 rounded-xl p-3 shadow-xl z-30 min-w-[140px]">
-                <p className="text-xs text-gray-400 mb-2 font-semibold">{t('swipe.menu.buttonStyle')}</p>
-                <button
-                  onClick={() => { setButtonStyle('upendo-color'); setShowStyleMenu(false); }}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'upendo-color' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                >
-                  {t('swipe.menu.upendoColor')}
-                </button>
-                <button
-                  onClick={() => { setButtonStyle('white-clean'); setShowStyleMenu(false); }}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'white-clean' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                >
-                  {t('swipe.menu.whiteClean')}
-                </button>
-                <button
-                  onClick={() => { setButtonStyle('vintage'); setShowStyleMenu(false); }}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm ${buttonStyle === 'vintage' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
-                >
-                  {t('swipe.menu.vintage')}
-                </button>
-              </div>
-            )}
-          </div>
-        );
-    }
+        )}
+      </div>
+    );
   };
 
   return (
@@ -341,7 +244,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       exit={{ scale: 0.95, opacity: 0, transition: { duration: 0.2 } }}
       transition={{ type: 'spring', stiffness: 500, damping: 50 }}
     >
-      <div className="relative w-full h-full shadow-2xl overflow-hidden bg-gray-900">
+      <div className="relative w-full h-full shadow-2xl overflow-hidden bg-gray-900 aspect-[9/16]">
         {/* Photo Navigation */}
         <div className="absolute top-0 left-0 right-0 bottom-32 z-10 flex h-auto">
           <div className="w-1/2 h-full" onClick={prevPhoto} />
@@ -352,7 +255,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
           key={currentPhotoIndex}
           src={(user.photos && user.photos[currentPhotoIndex]) || 'https://placehold.co/600x800'}
           alt={user.name || 'User'}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
           initial={{ opacity: 0.8 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}
@@ -361,17 +264,38 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
         {renderButtons()}
 
-        <div className="absolute bottom-8 left-0 right-0 p-5 pr-24 text-white z-10">
-          <div className="mb-3">
+        <div className="absolute bottom-4 left-0 right-0 p-5 pr-24 text-white z-10">
+          <div className="mb-2">
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold cursor-pointer" onClick={() => navigate(`/user/${user.id}`)}>
                  {user.name}{displayAge !== null && displayAge !== undefined ? `, ${displayAge}` : ''}
               </h2>
+              {isOnline && (!accountType || accountType === 'free') && (
+                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+              )}
               <VerificationBadge profile={user} />
             </div>
 
+            <div className="flex items-center gap-2 mt-1">
+              {distance && (
+                <div className="flex items-center gap-1.5 text-white/80 text-sm">
+                  <MapPin size={14} />
+                  <span>{distance}</span>
+                </div>
+              )}
+              
+              {/* Show viewed user's purposes */}
+              {userHereFor.length > 0 ? (
+                userHereFor.map((purpose: string) => (
+                  <span key={purpose} className={`px-3 py-1 rounded-full text-sm ${getPurposeColor(purpose)}`}>{purpose}</span>
+                ))
+              ) : (
+                <span className="px-3 py-1 rounded-full text-sm bg-gray-600 text-gray-300">Not specified</span>
+              )}
+            </div>
+
             {user.bio && (
-              <div className="text-gray-300 mt-1 mb-1">
+              <div className="text-gray-300 mt-1">
                 <p className={`text-white text-base ${!isBioExpanded && 'line-clamp-2'}`}>{user.bio}</p>
                 {user.bio.length > 100 && (
                   <button onClick={() => setIsBioExpanded(!isBioExpanded)} className="text-gray-400 text-sm font-semibold mt-1 hover:underline">
@@ -380,19 +304,6 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
                 )}
               </div>
             )}
-            
-            {distance && (
-              <div className="flex items-center gap-1.5 text-white/80 text-sm mt-1">
-                <MapPin size={14} />
-                <span>{distance}</span>
-              </div>
-            )}
-
-            {(user.hereFor || []).map((purpose: string) => (
-              <div key={purpose} className="mt-2">
-                <span className="px-3 py-1 rounded-full text-sm bg-gray-700 text-white">{purpose}</span>
-              </div>
-            ))}
             
             {/* Badges row */}
             {((user as any).accountType === 'pro' || (user as any).accountType === 'vip' || (user as any).account_type === 'pro' || (user as any).account_type === 'vip') && (
@@ -411,36 +322,26 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="space-y-4">
-            {mutualInterests.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold text-white/70 mb-2">{t('swipe.mutualInterests')}</h3>
-                <div className="flex flex-wrap gap-2">
-                  {mutualInterests.map(interest => (
-                      <span key={interest} className="px-3 py-1 rounded-full text-sm font-semibold bg-white/10 text-white/80">{interest}</span>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className="flex flex-wrap gap-2 mt-4">
               {(user as any).kids && (
-                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-blue-500/20 text-blue-300">{(user as any).kids}</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300">{(user as any).kids}</span>
               )}
               {(user as any).occupation && (
-                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-green-500/20 text-green-300">{(user as any).occupation}</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-300">{(user as any).occupation}</span>
               )}
               {user.religion && (
-                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-purple-500/20 text-purple-300">{user.religion}</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300">{user.religion}</span>
               )}
               {user.firstDate && (
-                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-yellow-500/20 text-yellow-300">{user.firstDate}</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-300">{user.firstDate}</span>
               )}
               {user.height && (
-                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-red-500/20 text-red-300">{formatHeight(user.height)}</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-300">{formatHeight(user.height)}</span>
               )}
+              {mutualInterests.slice(0, 2).map(interest => (
+                <span key={interest} className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-800 text-green-200">{interest}</span>
+              ))}
             </div>
           </div>
         </div>

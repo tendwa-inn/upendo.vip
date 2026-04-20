@@ -7,4 +7,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Supabase URL and anon key are required.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+    storage: window.localStorage,
+    storageKey: 'upendo-auth-token',
+    flowType: 'pkce',
+  }
+});

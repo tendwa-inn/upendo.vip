@@ -1,4 +1,5 @@
-import { supabase } from '../utils/supabase';
+import { supabase } from '../lib/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
 import { PromoCode } from '../types/admin';
 
 export const promoService = {
@@ -85,90 +86,65 @@ export const promoService = {
 
   // Delete a promo code and revert users
   async deletePromoCode(promoId: string): Promise<void> {
+    // Get the current session to ensure we are authenticated as an admin
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+
+    // Create a temporary client with the user's access token to ensure RLS is respected
+    const supabaseAuthed = createClient(supabase.supabaseUrl, supabase.supabaseKey, {
+      global: { headers: { Authorization: `Bearer ${session.access_token}` } },
+    });
+
     const numericPromoId = Number(promoId);
 
-    // First, get the promo code details
-    const { data: promo, error: promoError } = await supabase
+    const { data: promo, error: promoError } = await supabaseAuthed
       .from('promo_codes')
       .select('*')
       .eq('id', numericPromoId)
       .single();
 
-    if (promoError) {
-      console.error('Error fetching promo:', promoError);
-      throw promoError;
-    }
+    if (promoError) throw promoError;
     if (!promo) throw new Error('Promo code not found');
 
-    // Get all users who have used this promo
-    const { data: userPromos, error: userPromosError } = await supabase
+    const { data: userPromos, error: userPromosError } = await supabaseAuthed
       .from('user_promos')
       .select('user_id')
       .eq('promo_code_id', numericPromoId);
 
-    if (userPromosError) {
-      console.error('Error fetching user promos:', userPromosError);
-      throw userPromosError;
-    }
+    if (userPromosError) throw userPromosError;
 
-    // If this is a pro_account or vip_account promo, revert users to free
     if (promo.type === 'pro_account' || promo.type === 'vip_account') {
       const userIds = userPromos.map(up => up.user_id);
-
       if (userIds.length > 0) {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAuthed
           .from('profiles')
-          .update({
-            account_type: 'free',
-            subscription_expires_at: null
-          })
+          .update({ account_type: 'free', subscription_expires_at: null })
           .in('id', userIds);
-
-        if (updateError) {
-          console.error('Error updating profiles:', updateError);
-          throw updateError;
-        }
+        if (updateError) throw updateError;
       }
     } else if (promo.type === 'profile_views') {
       const userIds = userPromos.map(up => up.user_id);
-
       if (userIds.length > 0) {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAuthed
           .from('profiles')
-          .update({
-            can_view_profiles_expires_at: null
-          })
+          .update({ can_view_profiles_expires_at: null })
           .in('id', userIds);
-
-        if (updateError) {
-          console.error('Error updating profiles for profile views:', updateError);
-          throw updateError;
-        }
+        if (updateError) throw updateError;
       }
     }
 
-    // Delete user promos entries
-    const { error: deleteUserPromosError } = await supabase
+    const { error: deleteUserPromosError } = await supabaseAuthed
       .from('user_promos')
       .delete()
       .eq('promo_code_id', numericPromoId);
 
-    if (deleteUserPromosError) {
-      console.error('Error deleting user promos:', deleteUserPromosError);
-      throw deleteUserPromosError;
-    }
+    if (deleteUserPromosError) throw deleteUserPromosError;
 
-    // Finally, delete the promo code
-    const { error: deletePromoError } = await supabase
+    const { error: deletePromoError } = await supabaseAuthed
       .from('promo_codes')
       .delete()
       .eq('id', numericPromoId);
 
-    if (deletePromoError) {
-      console.error('Error deleting promo code:', deletePromoError);
-      throw deletePromoError;
-    }
-
-    console.log('Promo code deleted successfully:', numericPromoId);
+    if (deletePromoError) throw deletePromoError;
   },
 };

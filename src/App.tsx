@@ -42,6 +42,7 @@ import OfflineNotifier from './components/common/OfflineNotifier';
 import './index.css';
 
 import RouteGuard from './RouteGuard';
+import ProtectedRoute from './components/ProtectedRoute';
 
 import usePresenceStore from './stores/presenceStore';
 import i18n from 'i18next';
@@ -55,7 +56,16 @@ function App() {
   useEffect(() => {
     checkUser();
     
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+        // Clear local storage and Zustand state
+        localStorage.removeItem('upendo-auth-token');
+        useAuthStore.getState().setSession(null);
+        useAuthStore.getState().setProfile(null);
+      } else if (session) {
+        useAuthStore.getState().setSession(session);
+      }
+      // Always run checkUser to sync profile and handle routing
       checkUser();
     });
 
@@ -123,36 +133,37 @@ function App() {
 }
 
 const AppRoutes = () => {
-    const { session, isAdmin } = useAuthStore();
+  const { isAdmin } = useAuthStore();
 
-    if (session) {
-      if (isAdmin) {
-        return (
-          <Routes>
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route path="dashboard" element={<AdminDashboard />} />
-              <Route path="users" element={<AdminUsersPage />} />
-              <Route path="promos" element={<AdminPromosPage />} />
-              <Route path="reports" element={<AdminReportsPage />} />
-              <Route path="word-filter" element={<WordFilterManagement />} />
-              <Route path="system-messenger" element={<SystemMessenger />} />
-              <Route path="gifs" element={<AdminGifsPage />} />
-              <Route path="connections" element={<AdminConnectionsPage />} />
-              <Route path="dormant" element={<AdminDormantAccountsPage />} />
-              <Route path="settings" element={<AdminSettingsPage />} />
-              <Route index element={<Navigate to="dashboard" replace />} />
-            </Route>
-            <Route path="/profile" element={
-              <Layout>
-                <ProfilePage />
-              </Layout>
-            } />
-            <Route path="/*" element={<Navigate to="/admin/dashboard" replace />} />
-          </Routes>
-        );
-      } else {
-        return (
-          <Routes>
+  return (
+    <Routes>
+      {/* Unprotected Routes */}
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route path="/signup" element={<SignUpPage />} />
+      <Route path="/callback" element={<CallbackPage />} />
+      <Route path="/admin-login" element={<AdminLoginPage />} />
+      <Route path="/appeal" element={<AppealPage />} />
+      <Route path="/blocked" element={<BlockedPage />} />
+
+      {/* Protected Routes */}
+      <Route element={<ProtectedRoute />}>
+        {isAdmin ? (
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="promos" element={<AdminPromosPage />} />
+            <Route path="reports" element={<AdminReportsPage />} />
+            <Route path="word-filter" element={<WordFilterManagement />} />
+            <Route path="system-messenger" element={<SystemMessenger />} />
+            <Route path="gifs" element={<AdminGifsPage />} />
+            <Route path="connections" element={<AdminConnectionsPage />} />
+            <Route path="dormant" element={<AdminDormantAccountsPage />} />
+            <Route path="settings" element={<AdminSettingsPage />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
+          </Route>
+        ) : (
+          <>
             <Route path="/chat/:matchId" element={<ChatConversationPage />} />
             <Route path="/create-profile" element={<CreateProfilePage />} />
             <Route path="/*" element={
@@ -170,24 +181,14 @@ const AppRoutes = () => {
                 </Routes>
               </Layout>
             } />
-          </Routes>
-        );
-      }
-    } else {
-      // Not authenticated
-      return (
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignUpPage />} />
+          </>
+        )}
+      </Route>
 
-          <Route path="/callback" element={<CallbackPage />} />
-          <Route path="/admin-login" element={<AdminLoginPage />} /> {/* Admin specific login route */}
-          <Route path="/appeal" element={<AppealPage />} />
-          <Route path="/blocked" element={<BlockedPage />} />
-          <Route path="/*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      );
-    }
-  };
+      {/* Fallback Route */}
+      <Route path="/*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+};
 
 export default App;

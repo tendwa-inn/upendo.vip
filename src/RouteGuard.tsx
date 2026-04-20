@@ -7,7 +7,7 @@ import { useUiStore } from './stores/uiStore';
 import { wordFilterService } from './services/wordFilterService';
 
 const RouteGuard = ({ children }) => {
-  const { session, profile, isAdmin, loading } = useAuthStore();
+  const { session, profile, isAdmin, loading, isSuspended } = useAuthStore();
   const { onboardingCompleted: isFlowCompleted } = useOnboardingStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -16,28 +16,13 @@ const RouteGuard = ({ children }) => {
   useEffect(() => {
     if (loading) return; // Wait until authentication check is complete
 
-    const checkSuspension = async () => {
-      if (session && profile && !isAdmin) {
-        const suspension = await wordFilterService.getCurrentUserSuspension(profile.id);
-        if (suspension) {
-          if (location.pathname !== '/appeal') {
-            navigate(`/appeal?actionId=${suspension.id}`, { replace: true });
-          }
-          return true;
-        }
-        if ((profile as any).is_blocked) {
-          if (location.pathname !== '/blocked') {
-            navigate('/blocked', { replace: true });
-          }
-          return true;
-        }
-      }
-      return false;
-    };
-
     const handleRouting = async () => {
-      const isSuspended = await checkSuspension();
-      if (isSuspended) return;
+      if (isSuspended) {
+        if (location.pathname !== '/appeal') {
+          navigate('/appeal', { replace: true });
+        }
+        return;
+      }
 
       const isAuthPage = ['/login', '/signup', '/callback', '/appeal'].includes(location.pathname);
       const isAdminRoute = location.pathname.startsWith('/admin');

@@ -418,7 +418,7 @@ const DiscoverGrid: React.FC = () => {
           currentUser?.id || 'seed'
         ).map((user) => (
           <Link to={`/user/${user.id}`} key={user.id} className="relative flex flex-col items-center space-y-2">
-            <div className={`relative w-20 h-20 rounded-full overflow-hidden ${
+            <div className={`relative w-16 h-16 rounded-full overflow-hidden ${
               (profile as any)?.accountType === 'vip'
                 ? 'ring-2 ring-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
                 : ((profile as any)?.accountType === 'pro' ? 'ring-2 ring-[#ff7f50]/60' : '')
@@ -431,7 +431,7 @@ const DiscoverGrid: React.FC = () => {
               )}
             </div>
             <div className="text-center">
-              <h3 className={`font-bold text-sm ${isVip ? 'text-white' : isPro ? 'text-[#ffecd3]' : 'text-white'}`}>{user.name}, {calculateAge(user.dateOfBirth || (user as any).dob)}</h3>
+              <h3 className={`font-bold text-xs ${isVip ? 'text-white' : isPro ? 'text-[#ffecd3]' : 'text-white'}`}>{user.name}, {calculateAge(user.dateOfBirth || (user as any).dob)}</h3>
               <div className="flex items-center justify-center text-white/80 text-xs mt-1">
                 <span>{formatDistance((user as any).distance_meters || 0)}</span>
               </div>
@@ -470,7 +470,7 @@ const DiscoverGrid: React.FC = () => {
                         e.stopPropagation();
                         handleLikeUser(user.id);
                       }}
-                      className={`absolute top-0 left-0 w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-50 ${
+                      className={`absolute top-0 left-0 w-7 h-7 rounded-full flex items-center justify-center disabled:opacity-50 ${
                         (profile as any)?.accountType === 'vip'
                           ? 'bg-amber-500/30 text-amber-300'
                           : ((profile as any)?.accountType === 'pro'
@@ -494,7 +494,7 @@ const DiscoverGrid: React.FC = () => {
                         e.stopPropagation();
                         handleSendMessageRequest(user.id);
                       }}
-                      className={`absolute top-0 right-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                      className={`absolute top-0 right-0 w-7 h-7 rounded-full flex items-center justify-center ${
                         (profile as any)?.accountType === 'vip'
                           ? 'bg-amber-500/30 text-amber-300'
                           : ((profile as any)?.accountType === 'pro'

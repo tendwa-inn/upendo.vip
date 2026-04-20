@@ -1,4 +1,4 @@
-import { supabase } from '../utils/supabase';
+import { supabase } from '../lib/supabaseClient';
 
 export const profileService = {
   // Get a profile by its ID

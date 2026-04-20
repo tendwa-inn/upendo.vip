@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useOnboardingStore } from '../../stores/onboardingStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabaseClient'; // Import supabase
 
 const interestsList = [
   'Reading', 'Traveling', 'Movies', 'Music', 'Cooking', 'Dancing', 'Art', 'Photography',
@@ -27,19 +28,36 @@ const InterestsStep: React.FC = () => {
   };
 
   const handleNext = async () => {
-    try {
-      updateFormData({ interests: selectedInterests });
+    const { user } = useAuthStore.getState();
+    if (!user) {
+      console.error("User not available");
+      return;
+    }
 
-      await updateUserProfile({
-        ...formData,
-        interests: selectedInterests,
-        onboarding_completed: true
-      });
+    const profileData = {
+      id: user.id, // This is the crucial part
+      ...formData,
+      interests: selectedInterests,
+      onboarding_completed: true,
+    };
 
-      completeOnboarding();
-      navigate('/find', { replace: true });
-    } catch (error) {
+    // Use upsert to avoid conflicts
+    const { error } = await supabase.from('profiles').upsert(profileData);
+
+    if (error) {
       console.error(error);
+    } else {
+      // Manually update the profile in the store after upserting
+      const { data: updatedProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (updatedProfile) {
+        useAuthStore.setState({ profile: updatedProfile });
+      }
+
       completeOnboarding();
       navigate('/find', { replace: true });
     }

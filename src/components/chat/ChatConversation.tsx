@@ -123,7 +123,7 @@ const MessageBubble: React.FC<{ message: Message; onReply: (message: Message) =>
       <div className={`max-w-[75%]`}>
         <div className={`rounded-2xl text-sm leading-relaxed shadow-lg ${
           isSender 
-            ? (isPro ? "bg-gradient-to-b from-[#ff7f50] to-[#ff5e57]" : "bg-gradient-to-b from-pink-500 to-pink-700") 
+            ? (isVip ? "bg-gradient-to-b from-green-500 to-green-700" : isPro ? "bg-gradient-to-b from-[#ff7f50] to-[#ff5e57]" : "bg-gradient-to-b from-pink-500 to-pink-700") 
             : (isVip ? "bg-gradient-to-b from-[#1a1a1a] to-[#0b0b0b]" : (isPro ? "bg-gradient-to-b from-[#0e2030] to-[#091522]" : "bg-gradient-to-b from-[#3a1a22] to-[#2E0C13]"))
         } ${message.type === 'gif' ? 'p-0' : 'px-4 py-3'}`}>
           {message.type === 'gif' ? (
@@ -179,6 +179,14 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
   const handleReport = (reason: string) => {
     setMenuOpen(false);
     setReportModalOpen(true);
+  };
+
+  const handleGifButtonClick = () => {
+    if (isVip) {
+      setGifPickerOpen(!isGifPickerOpen);
+    } else {
+      toast.error('Only VIP users can send GIFs.');
+    }
   };
 
   const handleUnmatchClick = () => {
@@ -443,8 +451,12 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
 
         {/* Input */}
         <form onSubmit={handleSendMessage} className="p-3 border-t border-white/10 flex items-center gap-2">
-          <button type="button" className="p-2 rounded-full bg-white/10">
-            <Plus size={18} />
+          <button
+            type="button"
+            onClick={handleGifButtonClick}
+            className={`p-2 rounded-full bg-white/10 transition ${!isVip ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/20'}`}
+          >
+            <Smile size={18} />
           </button>
           <input
             value={message}
@@ -452,9 +464,6 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
             placeholder={t('chat.input.placeholder')}
             className="flex-1 bg-white/10 rounded-full px-4 py-2 text-sm outline-none"
           />
-          <button type="button" onClick={() => setGifPickerOpen(!isGifPickerOpen)} className="p-2 rounded-full bg-white/10">
-            <Smile size={18} />
-          </button>
           <button
             type="submit"
             className={`p-3 rounded-full transition ${isVip ? 'bg-amber-400 text-black hover:bg-amber-500' : isPro ? 'bg-[#ff7f50] hover:bg-[#ff5e57] text-white' : 'bg-pink-500 hover:bg-pink-600'}`}

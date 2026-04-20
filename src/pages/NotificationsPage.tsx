@@ -39,7 +39,7 @@ const NotificationsPage: React.FC = () => {
             <NotificationItem key={notification.id} notification={notification} />
           ))
         ) : (
-          <p className="text-center text-gray-400 mt-8">{t('noNotificationsYet') || 'No notifications yet.'}</p>
+          <p className="text-center text-gray-400 mt-8">No Notifications Yet</p>
         )}
       </div>
     </div>

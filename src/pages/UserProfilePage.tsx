@@ -10,7 +10,7 @@ import { useMatchAnimationStore } from '../stores/matchAnimationStore';
 import toast from 'react-hot-toast';
 import { useLikesStore } from '../stores/likesStore';
 import { reportService } from '../services/reportService';
-import { profileService } from '../services/profileService';
+import { blockService } from '../services/blockService';
 import { viewService } from '../services/viewService';
 import FullScreenImageViewer from '../components/common/FullScreenImageViewer';
 import ReportUserModal from '../components/modals/ReportUserModal';
@@ -209,7 +209,10 @@ const UserProfilePage: React.FC = () => {
                 <p className="text-white/70 text-sm">{t('profile.loading')}</p>
               </>
             ) : (
-              <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white"></div>
+              <>
+                <Ghost className="w-14 h-14 text-pink-500 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(236,72,153,0.9)]" />
+                <p className="text-white/70 text-sm">{t('profile.loading')}</p>
+              </>
             )}
           </div>
         );
@@ -285,7 +288,7 @@ const UserProfilePage: React.FC = () => {
     if (!authUser || !user) return;
     
     try {
-      await profileService.blockUser(authUser.id, user.id);
+      await blockService.blockUser(authUser.id, user.id);
       toast.success(t('toast.block.success'));
       setShowMenu(false);
       navigate('/find');
@@ -303,7 +306,7 @@ const UserProfilePage: React.FC = () => {
     }
     
     try {
-      await reportService.createUserReport(user.id, authUser.id, reason);
+      await reportService.createUserReport(authUser.id, user.id, reason);
       toast.success(t('toast.report.success'));
       setShowReportModal(false);
       setShowMenu(false);
@@ -329,7 +332,7 @@ const UserProfilePage: React.FC = () => {
   const isVipUser = acct === 'vip';
   const isProUser = acct === 'pro';
   return (
-    <div className={`min-h-screen relative ${isVipUser ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isProUser ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-transparent'}`}>
+    <div className={`min-h-screen relative ${isVipUser ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isProUser ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
       {/* Back Arrow & Menu */}
       <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-center">
         <Link to="/find" className={`p-2 rounded-full ${isDark ? 'bg-gray-800/50 text-white' : 'bg-black/20 text-white'} backdrop-blur-md`}>
@@ -462,11 +465,7 @@ const UserProfilePage: React.FC = () => {
           <h3 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-white'}`}>{t('profile.sections.interests')}</h3>
           <div className="flex flex-wrap gap-2">
             {(user.interests || []).map(interest => (
-              <span key={interest} className={`px-3 py-1 rounded-full text-sm ${
-                isVipUser ? 'bg-[#3a1a22] text-white'
-                : isProUser ? 'bg-gray-700 text-white'
-                : (isDark ? 'bg-purple-600 text-white' : 'bg-gray-700 text-white')
-              }`}>
+              <span key={interest} className="px-3 py-1 rounded-full text-sm bg-pink-800/60 text-pink-200">
                 {interest}
               </span>
             ))}
@@ -477,11 +476,7 @@ const UserProfilePage: React.FC = () => {
           <h3 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-white'}`}>{t('profile.sections.hereFor')}</h3>
           <div className="flex flex-wrap gap-2">
             {(user.hereFor || []).map(purpose => (
-              <span key={purpose} className={`px-3 py-1 rounded-full text-sm ${
-                isVipUser ? 'bg-green-600 text-white'
-                : isProUser ? 'bg-gray-700 text-white'
-                : (isDark ? 'bg-purple-600 text-white' : 'bg-gray-700 text-white')
-              }`}>
+              <span key={purpose} className="px-3 py-1 rounded-full text-sm bg-pink-800/60 text-pink-200">
                 {purpose}
               </span>
             ))}
