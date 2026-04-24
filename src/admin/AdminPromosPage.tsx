@@ -66,16 +66,11 @@ const AdminPromosPage: React.FC = () => {
         newPromo.code = generateRandomCode();
       }
       const promoToCreate = { ...newPromo, durationDays: newPromo.durationDays || 30 }; // Add default value
-      if (promoToCreate.durationDays !== undefined && promoToCreate.durationDays !== null && promoToCreate.durationDays !== '') {
-        const expires_at = new Date();
-        expires_at.setTime(expires_at.getTime() + (promoToCreate.durationDays * 24 * 60 * 60 * 1000));
-        (promoToCreate as any).expiresAt = expires_at.toISOString();
-      }
 
       await promoService.createPromoCode(promoToCreate);
       toast.success('Promo code created successfully');
       setIsDialogOpen(false);
-      setNewPromo({ type: 'message_requests', maxUses: 100, durationDays: null, effect: {} });
+      setNewPromo({ type: 'message_requests', maxUses: 100, durationDays: null });
       loadPromos();
     } catch (error) {
       toast.error('Failed to create promo code');
@@ -146,7 +141,7 @@ const AdminPromosPage: React.FC = () => {
                       <TableCell><Badge color="blue">{promo.code}</Badge></TableCell>
                       <TableCell>{promo.type.replace('_', ' ')}</TableCell>
                       <TableCell>{promo.timesUsed} / {promo.maxUses ?? '∞'}</TableCell>
-                      <TableCell>{new Date(promo.expiresAt).toLocaleDateString()}</TableCell>
+                      <TableCell>{promo.expiresAt ? new Date(promo.expiresAt).toLocaleDateString() : 'No expiry'}</TableCell>
                       <TableCell>
                         <Button
                           size="xs"
@@ -182,7 +177,7 @@ const AdminPromosPage: React.FC = () => {
                       <TableCell><Badge>{promo.code}</Badge></TableCell>
                       <TableCell>{promo.type.replace('_', ' ')}</TableCell>
                       <TableCell>{promo.timesUsed} / {promo.maxUses ?? '∞'}</TableCell>
-                      <TableCell>{new Date(promo.expiresAt).toLocaleDateString()}</TableCell>
+                      <TableCell>{promo.expiresAt ? new Date(promo.expiresAt).toLocaleDateString() : 'No expiry'}</TableCell>
                       <TableCell>
                         <Button
                           size="xs"

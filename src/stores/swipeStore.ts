@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 import { useAuthStore } from './authStore';
 import { useDiscoveryStore } from './discoveryStore';
-import { useMatchStore } from './matchStore.tsx';
+import { useMatchStore } from './matchStore';
+import { incrementSwipeCount } from '../services/popularityService';
 
 interface SwipeState {
   swipeCount: number;
@@ -43,7 +44,7 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
     }
 
     // Check swipe limit by tier
-    const tier = ((profile as any).accountType || (profile as any).subscription || (profile as any).subscriptionTier || 'free') as 'free' | 'pro' | 'vip';
+    const tier = ((profile as any).account_type || (profile as any).subscription || (profile as any).subscriptionTier || 'free') as 'free' | 'pro' | 'vip';
     const limit = LIMITS[tier] ?? LIMITS.free;
     {
       const { swipeCount, lastSwipeAt } = get();
@@ -64,28 +65,19 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
       localStorage.setItem('swipeState', JSON.stringify({ swipeCount: newSwipeCount, lastSwipeAt: now }));
     }
 
-    const { data: existingLike, error: existingLikeError } = await supabase
+    // 1. Use upsert to safely insert the like, avoiding duplicate errors
+    const { error } = await supabase
       .from('likes')
-      .select('id')
-      .eq('liker_id', currentUser.id)
-      .eq('liked_id', likedUserId)
-      .limit(1)
-      .maybeSingle();
+      .upsert(
+        { liker_id: currentUser.id, liked_id: likedUserId },
+        { onConflict: 'liker_id,liked_id' }
+      );
 
-    if (existingLikeError) {
-      console.error('Error checking existing like:', existingLikeError);
+    // 2. Explicitly handle errors, but ignore duplicate violations (code 23505)
+    // Note: upsert should prevent this, but it's good practice
+    if (error && error.code !== '23505') {
+      console.error('Error liking user:', error);
       return { matched: false };
-    }
-
-    if (!existingLike) {
-      const { error: likeError } = await supabase
-        .from('likes')
-        .insert({ liker_id: currentUser.id, liked_id: likedUserId });
-
-      if (likeError) {
-        console.error('Error recording like:', likeError);
-        return { matched: false };
-      }
     }
 
     // Check for a mutual like
@@ -109,6 +101,15 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
       await createMatch(likedUserId);
       useDiscoveryStore.getState().removePotentialMatch(likedUserId);
       return { matched: true };
+    } else {
+      // Create a notification for the liked user if it's not a match yet
+      await supabase.from('notifications').insert({
+        user_id: likedUserId,
+        actor_id: currentUser.id,
+        type: 'new_like',
+        title: 'You have a new like!',
+        message: `${profile?.name || 'Someone'} liked your profile.`
+      });
     }
 
     useDiscoveryStore.getState().removePotentialMatch(likedUserId);
@@ -119,7 +120,20 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
     const currentUser = useAuthStore.getState().user;
     if (!currentUser) return;
 
-    // We don't need to record left swipes in the DB for this logic, just remove from discovery
+    // Add to dislikes table
+    const { error } = await supabase
+      .from('dislikes')
+      .insert({ user_id: currentUser.id, disliked_user_id: swipedUserId });
+
+    if (error) {
+      console.error('Error recording dislike:', error);
+      // Don't stop the UI flow, but log the error
+    }
+
+// Increment swipe count for popularity score
+    incrementSwipeCount(currentUser.id);
+
+    // We still remove from discovery locally for immediate feedback
     useDiscoveryStore.getState().removePotentialMatch(swipedUserId);
   },
 }));

@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { useAuthStore } from '../stores/authStore';
+import { recordProfileView as recordPopularityProfileView } from './popularityService';
 
 export const viewService = {
   async addProfileView(viewedId: string): Promise<void> {
@@ -20,5 +21,8 @@ export const viewService = {
     if (error) {
       console.error('Error recording profile view:', error);
     }
+
+    // Also record the view for the popularity score system
+    recordPopularityProfileView(viewer.id, viewedId);
   },
 };

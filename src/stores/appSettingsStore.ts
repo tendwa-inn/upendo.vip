@@ -12,4 +12,5 @@ export const useAppSettingsStore = create<AppSettingsState>((set) => ({
     const settings = await adminSettingsService.getAppSettings();
     set({ settings });
   },
+  reset: () => set({ settings: [] }),
 }));

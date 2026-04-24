@@ -2,21 +2,71 @@ import React, { useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
-import { Upload, X } from 'lucide-react';
+import { UploadCloud, X, Edit } from 'lucide-react';
+import PhotoCropModal from './PhotoCropModal';
 
 const ProfilePhotoUploader: React.FC<{ maxPhotos?: number }> = ({ maxPhotos = 6 }) => {
-  const { user, updateUserProfile } = useAuthStore();
+  const { user, updateUserProfile, profile } = useAuthStore();
+  const isVip = profile?.account_type === 'vip';
+  const isPro = profile?.account_type === 'pro';
   const [photos, setPhotos] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [currentImageToCrop, setCurrentImageToCrop] = useState<string | null>(null);
+  const [currentFileToCrop, setCurrentFileToCrop] = useState<File | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      setPhotos(prev => [...prev, ...filesArray]);
+      const combinedPhotos = [...photos, ...filesArray].slice(0, maxPhotos);
+      setPhotos(combinedPhotos);
 
       const newPreviews = filesArray.map(file => URL.createObjectURL(file));
-      setPreviews(prev => [...prev, ...newPreviews]);
+      const combinedPreviews = [...previews, ...newPreviews].slice(0, maxPhotos);
+      setPreviews(combinedPreviews);
+      e.target.value = '';
+    }
+  };
+
+  const openCropper = (index: number) => {
+    setEditingIndex(index);
+    setCurrentImageToCrop(previews[index]);
+    setCropModalOpen(true);
+  };
+
+  const handleCropComplete = (croppedImageUrl: string) => {
+    if (editingIndex === null) return;
+
+    fetch(croppedImageUrl)
+      .then(res => res.blob())
+      .then(blob => {
+        const file = new File([blob], `cropped_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        
+        const newPhotos = [...photos];
+        newPhotos[editingIndex] = file;
+        setPhotos(newPhotos);
+
+        const newPreviews = [...previews];
+        newPreviews[editingIndex] = croppedImageUrl;
+        setPreviews(newPreviews);
+
+        // Clean up the old blob URL that was replaced
+        // URL.revokeObjectURL(previews[editingIndex]);
+
+        setCropModalOpen(false);
+        setCurrentImageToCrop(null);
+        setEditingIndex(null);
+      });
+  };
+
+  const handleCropCancel = () => {
+    setCropModalOpen(false);
+    setCurrentImageToCrop(null);
+    setCurrentFileToCrop(null);
+    if (currentImageToCrop) {
+      URL.revokeObjectURL(currentImageToCrop);
     }
   };
 
@@ -103,21 +153,38 @@ const ProfilePhotoUploader: React.FC<{ maxPhotos?: number }> = ({ maxPhotos = 6 
     <div className="w-full max-w-md p-4">
       <div className="grid grid-cols-3 gap-4 mb-6 w-full">
         {previews.map((preview, index) => (
-          <div key={index} className="relative aspect-square">
+          <div key={index} className="relative aspect-square group">
             <img src={preview} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg" />
-            <button onClick={() => removePhoto(index)} className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">X</button>
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              <button onClick={() => openCropper(index)} className="p-2 bg-white/20 text-white rounded-full hover:bg-white/30">
+                <Edit className="w-4 h-4" />
+              </button>
+              <button onClick={() => removePhoto(index)} className="p-2 bg-white/20 text-white rounded-full hover:bg-white/30">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         ))}
         {photos.length < maxPhotos && (
           <label htmlFor="photo-upload" className="cursor-pointer flex items-center justify-center border-2 border-dashed border-gray-500 rounded-lg aspect-square hover:bg-gray-700 transition-colors">
-            <Upload className="w-8 h-8 text-gray-400" />
+                                                  <UploadCloud className="w-8 h-8 text-gray-400 opacity-50" />
             <input id="photo-upload" type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
           </label>
         )}
       </div>
-      <button onClick={handleSavePhotos} disabled={uploading || photos.length === 0} className="w-full font-bold py-3 px-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all duration-300 disabled:bg-green-800 disabled:cursor-not-allowed">
+      <button onClick={handleSavePhotos} disabled={uploading || photos.length === 0} className={`w-full font-bold py-3 px-4 rounded-xl transition-all duration-300 disabled:cursor-not-allowed ${
+        isVip ? 'bg-amber-400 hover:bg-amber-500 text-black disabled:bg-amber-800' : isPro ? 'bg-cyan-400 hover:bg-cyan-500 text-white disabled:bg-cyan-800' : 'bg-green-600 hover:bg-green-700 text-white disabled:bg-green-800'
+      }`}>
         {uploading ? 'Uploading...' : 'Save Photos'}
       </button>
+      {currentImageToCrop && (
+        <PhotoCropModal
+          isOpen={cropModalOpen}
+          onClose={handleCropCancel}
+          onCropComplete={handleCropComplete}
+          imageUrl={currentImageToCrop}
+        />
+      )}
     </div>
   );
 };

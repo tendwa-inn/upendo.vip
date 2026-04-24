@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { ArrowLeft, Heart, MoreVertical, Flag, Ban, X, Crown, Shield, MapPin, Ghost } from 'lucide-react';
+import { ArrowLeft, Heart, MoreVertical, Flag, Ban, X, Crown, Shield, MapPin, Ghost, Check } from 'lucide-react';
 import { useThemeStore } from '../stores/themeStore';
 import { useAuthStore } from '../stores/authStore';
 import { useMatchStore } from '../stores/matchStore.tsx';
@@ -48,6 +48,11 @@ const UserProfilePage: React.FC = () => {
   const { isMatchAnimationVisible, matchedUser, showMatchAnimation, hideMatchAnimation } = useMatchAnimationStore();
   const [likedSent, setLikedSent] = useState(false);
   const [isBlockDialogOpen, setBlockDialogOpen] = useState(false);
+  const [isSendingLike, setIsSendingLike] = useState(false);
+
+  const acct = (currentProfile as any)?.account_type || (currentProfile as any)?.subscription;
+  const isVip = acct === 'vip';
+  const isPro = acct === 'pro';
 
   const calculateAge = (dob: string | Date) => {
     if (!dob) return null;
@@ -86,12 +91,16 @@ const UserProfilePage: React.FC = () => {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('*')
+          .select('id, name, age, date_of_birth, dob, photos, bio, location, location_name, interests, hereFor, height, religion, education, drinking, smoking, firstdate, love_language, kids, occupation, account_type, subscription, last_active_at, is_verified')
           .eq('id', userId)
           .single();
         if (error) throw error;
 
-        let processed: any = { ...data };
+        let processed: any = { 
+          ...data,
+          lastActive: data.last_active_at || data.lastActive,
+          account_type: data.account_type || data.subscription,
+        };
         if (processed.location && typeof processed.location === 'string') {
           const pointRegex = /POINT\(([-\d.]+) ([-\d.]+)\)/;
           const match = (processed.location as string).match(pointRegex);
@@ -192,31 +201,24 @@ const UserProfilePage: React.FC = () => {
 
   if (isLoading) {
     return (
-      (() => {
-        const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
-        const isVip = acct === 'vip';
-        const isPro = acct === 'pro';
-        return (
-          <div className={`flex flex-col items-center justify-center min-h-screen text-white ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
-            {isVip ? (
-              <>
-                <Ghost className="w-14 h-14 text-amber-300 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]" />
-                <p className="text-white/70 text-sm">{t('profile.loading')}</p>
-              </>
-            ) : isPro ? (
-              <>
-                <Ghost className="w-14 h-14 text-sky-300 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(125,211,252,0.9)]" />
-                <p className="text-white/70 text-sm">{t('profile.loading')}</p>
-              </>
-            ) : (
-              <>
-                <Ghost className="w-14 h-14 text-pink-500 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(236,72,153,0.9)]" />
-                <p className="text-white/70 text-sm">{t('profile.loading')}</p>
-              </>
-            )}
-          </div>
-        );
-      })()
+      <div className={`flex flex-col items-center justify-center min-h-screen text-white ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
+        {isVip ? (
+          <>
+            <Ghost className="w-14 h-14 text-amber-400 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]" />
+            <p className="text-white/70 text-sm">{t('profile.loading')}</p>
+          </>
+        ) : isPro ? (
+          <>
+            <Ghost className="w-14 h-14 text-cyan-400 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(34,211,238,0.9)]" />
+            <p className="text-white/70 text-sm">{t('profile.loading')}</p>
+          </>
+        ) : (
+          <>
+            <Ghost className="w-14 h-14 text-pink-500 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(236,72,153,0.9)]" />
+            <p className="text-white/70 text-sm">{t('profile.loading')}</p>
+          </>
+        )}
+      </div>
     );
   }
 
@@ -263,9 +265,17 @@ const UserProfilePage: React.FC = () => {
   };
   
   const handleSendLikeProfile = async () => {
-    if (!authUser || !user) return;
+    if (!authUser || !user || isSendingLike) return;
+
+    setIsSendingLike(true);
     try {
-      await supabase.from('likes').insert({ liker_id: authUser.id, liked_id: (user as any).id });
+      // Use upsert to prevent duplicate likes
+      await supabase
+        .from('likes')
+        .upsert(
+          { liker_id: authUser.id, liked_id: (user as any).id },
+          { onConflict: 'liker_id,liked_id' }
+        );
       setLikedSent(true);
       const { data: reciprocal } = await supabase
         .from('likes')
@@ -277,10 +287,19 @@ const UserProfilePage: React.FC = () => {
         await createMatch((user as any).id);
         showMatchAnimation(user);
       } else {
-        // optional: toast UI can be plugged here if desired
+        // Create a notification for the liked user
+        await supabase.from('notifications').insert({
+          user_id: (user as any).id,
+          actor_id: authUser.id,
+          type: 'new_like',
+          title: 'You have a new like!',
+          message: `${currentProfile?.name || 'Someone'} liked your profile.`
+        });
       }
-    } catch (e) {
-      console.error('Error sending like:', e);
+    } catch (err) {
+      console.error('Unexpected error sending like:', err);
+    } finally {
+      setIsSendingLike(false);
     }
   };
 
@@ -328,11 +347,19 @@ const UserProfilePage: React.FC = () => {
     );
   };
 
-  const acct = (currentProfile as any)?.accountType || (currentProfile as any)?.subscription;
-  const isVipUser = acct === 'vip';
-  const isProUser = acct === 'pro';
+  const getProfileTheme = (profile) => {
+    if (!profile) return 'free';
+    const accountType = profile.account_type || profile.accountType || profile.subscription;
+    if (accountType === 'vip') return 'vip';
+    if (accountType === 'pro') return 'pro';
+    return 'free';
+  };
+
+  const viewedProfileTheme = getProfileTheme(user);
+  const isVipProfile = viewedProfileTheme === 'vip';
+  const isProProfile = viewedProfileTheme === 'pro';
   return (
-    <div className={`min-h-screen relative ${isVipUser ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isProUser ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
+    <div className={`min-h-screen relative ${isVipProfile ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isProProfile ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
       {/* Back Arrow & Menu */}
       <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-center">
         <Link to="/find" className={`p-2 rounded-full ${isDark ? 'bg-gray-800/50 text-white' : 'bg-black/20 text-white'} backdrop-blur-md`}>
@@ -370,7 +397,7 @@ const UserProfilePage: React.FC = () => {
       </div>
 
       {/* Profile Content */}
-      <div className="p-6 pt-16">
+      <div className="flex-1 p-6 pt-16 pb-28">
         <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-4">
           {(user.photos || []).map((photo, index) => (
             <div key={index} className="aspect-square rounded-lg overflow-hidden cursor-pointer" onClick={() => handleImageClick(index)}>
@@ -411,9 +438,21 @@ const UserProfilePage: React.FC = () => {
             return (
               <div className="flex flex-col gap-2 mb-4">
                 <div className="flex items-center gap-2">
-                  <h3 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-white'}`}>
-                    {user.name}{age !== null && age !== undefined ? `, ${age}` : ''}
-                  </h3>
+                <h3 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-white'}`}>
+                  {user.name} {age}
+                </h3>
+                  {accountType === 'vip' && (
+                    <div className="relative w-5 h-5" title="VIP User">
+                      <Shield className="absolute w-full h-full text-amber-400" fill="currentColor" />
+                      <Check className="absolute w-3 h-3 top-1 left-1 text-black" strokeWidth={3} />
+                    </div>
+                  )}
+                  {accountType === 'pro' && (
+                    <div className="relative w-5 h-5" title="Pro User">
+                      <Shield className="absolute w-full h-full text-blue-800" fill="currentColor" />
+                      <Check className="absolute w-3 h-3 top-1 left-1 text-white" strokeWidth={3} />
+                    </div>
+                  )}
                   <VerificationBadge profile={user} />
                 </div>
                 
@@ -437,18 +476,13 @@ const UserProfilePage: React.FC = () => {
                 {/* Badges row */}
                 <div className="flex items-center gap-2 mt-1">
                   {isPremium && (
-                    <div className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                       accountType === 'pro' 
                         ? 'bg-white/20 text-white' 
                         : 'bg-black text-white'
                     }`}>
-                      {accountType === 'vip' ? (
-                        <Crown className="w-3.5 h-3.5" />
-                      ) : (
-                        <Shield className="w-3.5 h-3.5" />
-                      )}
-                      <span>{accountType.toLowerCase()}</span>
-                    </div>
+                      {accountType.toLowerCase()}
+                    </span>
                   )}
                   <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-orange-500/20 text-orange-200 border border-orange-500/30">
                     {vibe}
@@ -465,7 +499,11 @@ const UserProfilePage: React.FC = () => {
           <h3 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-white'}`}>{t('profile.sections.interests')}</h3>
           <div className="flex flex-wrap gap-2">
             {(user.interests || []).map(interest => (
-              <span key={interest} className="px-3 py-1 rounded-full text-sm bg-pink-800/60 text-pink-200">
+              <span key={interest} className={`px-3 py-1 rounded-full text-sm ${
+                isVipProfile ? 'bg-amber-400/20 text-amber-300 border border-amber-400/50'
+                : isProProfile ? 'bg-cyan-500/20 text-cyan-200'
+                : 'bg-rose-800/80 text-rose-200'
+              }`}>
                 {interest}
               </span>
             ))}
@@ -476,7 +514,11 @@ const UserProfilePage: React.FC = () => {
           <h3 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-white'}`}>{t('profile.sections.hereFor')}</h3>
           <div className="flex flex-wrap gap-2">
             {(user.hereFor || []).map(purpose => (
-              <span key={purpose} className="px-3 py-1 rounded-full text-sm bg-pink-800/60 text-pink-200">
+              <span key={purpose} className={`px-3 py-1 rounded-full text-sm ${
+                isVipProfile ? 'bg-amber-400/20 text-amber-300 border border-amber-400/50'
+                : isProProfile ? 'bg-cyan-500/20 text-cyan-200'
+                : 'bg-rose-800/80 text-rose-200'
+              }`}>
                 {purpose}
               </span>
             ))}
@@ -499,15 +541,13 @@ const UserProfilePage: React.FC = () => {
         <div className="flex space-x-4 mt-8">
           {!likedSent && (
             <button onClick={handleSendLikeProfile} className={`flex-1 py-3 rounded-full font-semibold transition-all duration-300 ${
-              isVipUser
-                ? 'bg-gradient-to-r from-amber-400 via-orange-500 to-amber-600 text-black hover:from-amber-500 hover:to-orange-600'
-                : isProUser
-                  ? 'bg-gradient-to-r from-[#ff7f50] to-[#ff5e57] text-white hover:from-[#ff9068] hover:to-[#ff5e57]'
-                  : (isDark
-                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700'
-                      : 'bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:from-pink-600 hover:to-purple-700')
+                isVipProfile
+                ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black hover:from-amber-500 hover:to-yellow-600'
+                : isProProfile
+                  ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-white hover:from-cyan-500 hover:to-blue-600'
+                  : 'bg-gradient-to-r from-rose-700 to-rose-800 text-white hover:from-rose-800 hover:to-rose-900'
             }`}>
-              <Heart className={`w-5 h-5 inline mr-2 ${(currentProfile as any)?.accountType === 'vip' ? 'text-black' : ''}`} />
+              <Heart className={`w-5 h-5 inline mr-2 ${isVipProfile ? 'text-black' : ''}`} />
               {t('profile.sendLike')}
             </button>
           )}
@@ -530,13 +570,11 @@ const UserProfilePage: React.FC = () => {
             const showMessage = compatibleScore >= threshold;
             return showMessage ? (
               <button onClick={handleSendMessageRequestProfile} className={`flex-1 py-3 rounded-full font-semibold border-2 ${
-                isVipUser
+                isVipProfile
                   ? 'border-amber-400 text-amber-300 hover:bg-amber-500 hover:text-black'
-                  : isProUser
-                    ? 'border-[#ff7f50] text-[#ff7f50] hover:bg-[#ff7f50] hover:text-black'
-                    : (isDark
-                        ? 'border-purple-600 text-purple-400 hover:bg-purple-600 hover:text-white'
-                        : 'border-white text-white hover:bg-white hover:text-purple-600')
+                  : isProProfile
+                    ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-500 hover:text-white'
+                    : 'border-rose-700 text-rose-400 hover:bg-rose-700 hover:text-white'
               }`}>{t('profile.message')}</button>
             ) : null;
           })()}
@@ -546,6 +584,7 @@ const UserProfilePage: React.FC = () => {
       {isViewerOpen && (
         <FullScreenImageViewer 
           images={user.photos || []}
+          user={user} // Pass the user object
           initialIndex={selectedImageIndex}
           onClose={() => setIsViewerOpen(false)}
         />
@@ -577,7 +616,7 @@ const UserProfilePage: React.FC = () => {
               className="bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] rounded-2xl p-6 mx-4 max-w-sm w-full border border-pink-500/30 shadow-2xl relative"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
+              <div className={`absolute inset-0 rounded-2xl blur-xl ${isVipProfile ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : isProProfile ? 'bg-gradient-to-r from-cyan-400/10 to-blue-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10'}`}></div>
               <h3 className="text-lg font-semibold mb-2 text-white relative z-10">{t('chat.block.title')}</h3>
               <p className="text-gray-300 mb-4 relative z-10">{t('chat.block.body', { name: (user as any)?.name || '' })}</p>
               <div className="flex gap-3 justify-end relative z-10">

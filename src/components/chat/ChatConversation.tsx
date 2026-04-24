@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Camera, Phone, Video, Heart, ArrowLeft, MoreVertical, Plus, Smile, UserX, ShieldX, Flag, Check, X, Trash2, MessageSquare, Edit, MoreHorizontal, Crown, Shield } from 'lucide-react';
@@ -6,6 +5,7 @@ import { Match, Message } from '../../types';
 import { useMatchStore } from '../../stores/matchStore.tsx';
 import SafeImage from '../common/SafeImage';
 import { useAuthStore } from '../../stores/authStore';
+import usePresenceStore from '../../stores/presenceStore';
 import { reportService } from '../../services/reportService';
 import ReportUserModal from '../modals/ReportUserModal';
 import { blockService } from '../../services/blockService';
@@ -18,6 +18,7 @@ import { supabase } from '../../lib/supabaseClient';
 import heySticker from '/Hey.png'; // Import the sticker
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTranslation } from 'react-i18next';
+import { cn } from '../../lib/utils';
 import toast from 'react-hot-toast';
 
 const ConversationStarter: React.FC<{ onSendHey: () => void }> = ({ onSendHey }) => {
@@ -43,11 +44,10 @@ const ConversationStarter: React.FC<{ onSendHey: () => void }> = ({ onSendHey })
   );
 };
 
-const TypingIndicator = () => {
-  const isVip = ((useAuthStore.getState().profile as any)?.accountType === 'vip') || ((useAuthStore.getState().profile as any)?.subscription === 'vip');
+const TypingIndicator = ({ viewerTheme }: { viewerTheme: any }) => {
   return (
     <div className="flex justify-start">
-      <div className={`${isVip ? 'bg-[#1a1a1a]' : 'bg-[#3a1a22]'} px-4 py-3 rounded-2xl flex gap-2`}>
+      <div className={`${viewerTheme.bubble.receiver} px-4 py-3 rounded-2xl flex gap-2`}>
         <motion.span
           className="w-2 h-2 bg-white/60 rounded-full"
           animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.2, 1] }}
@@ -68,15 +68,23 @@ const TypingIndicator = () => {
   );
 };
 
-const MessageBubble: React.FC<{ message: Message; onReply: (message: Message) => void; otherUserAvatar?: string; currentUserAvatar?: string; }> = ({ message, onReply, otherUserAvatar, currentUserAvatar }) => {
-  const { user: currentUser, profile } = useAuthStore();
+const MessageBubble: React.FC<{ 
+  message: Message; 
+  onReply: (message: Message) => void; 
+  otherUser: any;
+  currentUserInMatch: any;
+  viewerTheme: any; 
+}> = ({ message, onReply, otherUser, currentUserInMatch, viewerTheme }) => {
+  const { user: loggedInUser } = useAuthStore();
+  const { t } = useTranslation();
   const { isReadReceiptsEnabled } = useSettingsStore();
-  const sender = (message as any).sender_id || message.senderId;
-  const isSender = sender === currentUser?.id;
+
+  const isSender = ((message as any).sender_id || message.senderId) === loggedInUser?.id;
+  const senderProfile = isSender ? currentUserInMatch : otherUser;
+  const senderAccountType = (senderProfile as any)?.account_type || (senderProfile as any)?.subscription || 'free';
+  const senderTheme = getTheme(senderAccountType);
+
   const isRead = (message as any).is_read || message.isRead;
-  const isPremium = profile?.accountType === 'pro' || profile?.accountType === 'vip';
-  const isVip = profile?.accountType === 'vip' || (profile as any)?.subscription === 'vip';
-  const isPro = profile?.accountType === 'pro' || (profile as any)?.subscription === 'pro';
 
   // Handle sticker messages
   if (message.content === '/sticker hey') {
@@ -87,7 +95,7 @@ const MessageBubble: React.FC<{ message: Message; onReply: (message: Message) =>
         transition={{ type: "spring", stiffness: 200, damping: 20 }}
         className={`flex items-end gap-2 w-full ${isSender ? "justify-end" : "justify-start"}`}>
         {!isSender && (
-          <SafeImage src={otherUserAvatar} alt="avatar" className="w-8 h-8 rounded-full" fallbackSrc="/upendo-logo.png" />
+          <SafeImage src={otherUser.photos?.[0]} alt="avatar" className="w-8 h-8 rounded-full" fallbackSrc="/upendo-logo.png" />
         )}
         <div className="max-w-[75%]">
           <div className="rounded-2xl text-sm leading-relaxed shadow-lg bg-transparent p-0">
@@ -99,13 +107,13 @@ const MessageBubble: React.FC<{ message: Message; onReply: (message: Message) =>
           </div>
           <div className={`text-[10px] mt-1 ${isSender ? "text-right" : "text-left"} flex flex-col`}>
             <span className="opacity-60">{formatMessageTime(message.timestamp)}</span>
-            {isSender && isPremium && isReadReceiptsEnabled && isRead && (
-              <span className={`${isVip ? 'text-amber-400' : 'text-pink-500'} font-semibold mt-0.5 opacity-100`}>Seen</span>
+            {isSender && (senderAccountType === 'pro' || senderAccountType === 'vip') && isReadReceiptsEnabled && isRead && (
+              <span className={cn("font-semibold mt-0.5 opacity-100", senderTheme.primary)}>{t('chat.seen')}</span>
             )}
           </div>
         </div>
         {isSender && (
-          <SafeImage src={currentUserAvatar} alt="avatar" className="w-8 h-8 rounded-full" fallbackSrc="/upendo-logo.png" />
+          <SafeImage src={currentUserInMatch.photos?.[0]} alt="avatar" className="w-8 h-8 rounded-full" fallbackSrc="/upendo-logo.png" />
         )}
       </motion.div>
     );
@@ -118,14 +126,10 @@ const MessageBubble: React.FC<{ message: Message; onReply: (message: Message) =>
       transition={{ type: "spring", stiffness: 200, damping: 20 }}
       className={`flex items-end gap-2 w-full ${isSender ? "justify-end" : "justify-start"}`}>
       {!isSender && (
-        <SafeImage src={otherUserAvatar} alt="avatar" className="w-8 h-8 rounded-full" fallbackSrc="/upendo-logo.png" />
+        <SafeImage src={otherUser.photos?.[0]} alt="avatar" className="w-8 h-8 rounded-full" fallbackSrc="/upendo-logo.png" />
       )}
       <div className={`max-w-[75%]`}>
-        <div className={`rounded-2xl text-sm leading-relaxed shadow-lg ${
-          isSender 
-            ? (isVip ? "bg-gradient-to-b from-green-500 to-green-700" : isPro ? "bg-gradient-to-b from-[#ff7f50] to-[#ff5e57]" : "bg-gradient-to-b from-pink-500 to-pink-700") 
-            : (isVip ? "bg-gradient-to-b from-[#1a1a1a] to-[#0b0b0b]" : (isPro ? "bg-gradient-to-b from-[#0e2030] to-[#091522]" : "bg-gradient-to-b from-[#3a1a22] to-[#2E0C13]"))
-        } ${message.type === 'gif' ? 'p-0' : 'px-4 py-3'}`}>
+        <div className={`rounded-2xl text-sm leading-relaxed shadow-lg ${isSender ? senderTheme.bubble.sender : viewerTheme.bubble.receiver} ${message.type === 'gif' ? 'p-0' : 'px-4 py-3'}`}>
           {message.type === 'gif' ? (
             <img src={message.content} alt="gif" className="rounded-2xl" />
           ) : (
@@ -133,35 +137,72 @@ const MessageBubble: React.FC<{ message: Message; onReply: (message: Message) =>
           )}
         </div>
         <div className={`text-[10px] mt-1 ${isSender ? "text-right" : "text-left"} flex flex-col`}>
-            <span className="opacity-60">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            {isSender && isPremium && isReadReceiptsEnabled && isRead && (
-              <span className={`${isVip ? 'text-amber-400' : (isPro ? 'text-sky-400' : 'text-pink-500')} font-semibold mt-0.5 opacity-100`}>{t('chat.seen')}</span>
+            <span className="opacity-60">{formatMessageTime(message.timestamp)}</span>
+            {isSender && (senderAccountType === 'pro' || senderAccountType === 'vip') && isReadReceiptsEnabled && isRead && (
+              <span className={cn("font-semibold mt-0.5 opacity-100", senderTheme.primary)}>{t('chat.seen')}</span>
             )}
           </div>
       </div>
       {isSender && (
-        <SafeImage src={currentUserAvatar} alt="avatar" className="w-8 h-8 rounded-full" fallbackSrc="/upendo-logo.png" />
+        <SafeImage src={currentUserInMatch.photos?.[0]} alt="avatar" className="w-8 h-8 rounded-full" fallbackSrc="/upendo-logo.png" />
       )}
     </motion.div>
   );
 };
 
 
-import usePresenceStore from '../../stores/presenceStore';
+import { wordFilterService } from '../../services/wordFilterService';
 import { formatDistanceToNowStrict } from 'date-fns';
 
+import { getTheme } from '../../styles/theme';
+
 const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
-  const { user: currentUser } = useAuthStore();
+  const { user: loggedInUser, profile } = useAuthStore();
+  const accountType = (profile as any)?.account_type || (profile as any)?.subscription || 'free';
+  const theme = getTheme(accountType);
+  const isVip = accountType === 'vip';
+  const isPro = accountType === 'pro';
   const { t } = useTranslation();
-  if (!currentUser) return null;
+  if (!loggedInUser) return null;
 
   const navigate = useNavigate();
   const { onlineUsers } = usePresenceStore();
-  const otherUser = match.user1.id === currentUser?.id ? match.user2 : match.user1;
-  const aCurrentUser = match.user1.id === currentUser?.id ? match.user1 : match.user2;
+  const otherUser = match.user1.id === loggedInUser?.id ? match.user2 : match.user1;
+  const currentUserInMatch = match.user1.id === loggedInUser?.id ? match.user1 : match.user2;
+  
+  // Debug: Log the entire match data to understand the structure
+  console.log('[DEBUG] ChatConversation match data:', {
+    matchId: match.id,
+    user1: {
+      id: match.user1.id,
+      name: match.user1.name,
+      lastActive: match.user1.lastActive,
+      last_active_at: (match.user1 as any).last_active_at,
+    },
+    user2: {
+      id: match.user2.id,
+      name: match.user2.name,
+      lastActive: match.user2.lastActive,
+      last_active_at: (match.user2 as any).last_active_at,
+    },
+    otherUser: {
+      id: otherUser.id,
+      name: otherUser.name,
+      lastActive: otherUser.lastActive,
+      last_active_at: (otherUser as any).last_active_at,
+    }
+  });
+  
+  const otherUserTheme = getTheme((otherUser as any)?.account_type || (otherUser as any)?.accountType || (otherUser as any)?.subscription);
 
-  const isOnline = onlineUsers[otherUser.id];
-  const lastActive = otherUser.lastActive ? formatDistanceToNowStrict(new Date(otherUser.lastActive), { addSuffix: true }) : 'never';
+  const isOnline = !!onlineUsers[otherUser.id];
+  
+  const lastActive = otherUser.last_active_at
+    ? formatDistanceToNowStrict(
+        new Date(otherUser.last_active_at),
+        { addSuffix: true }
+      )
+    : 'never';
 
   // Check if this is a new conversation (no messages yet)
   const isNewConversation = match.messages.length === 0;
@@ -227,8 +268,8 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
   };
 
   const handleBlock = async () => {
-    if (!currentUser) return;
-    await blockService.blockUser(currentUser.id, otherUser.id);
+    if (!loggedInUser) return;
+    await blockService.blockUser(loggedInUser.id, otherUser.id);
     await unmatch(match.id);
     setBlockDialogOpen(false);
     toast.success(t('toast.block.success'));
@@ -237,18 +278,74 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const handleSendHeySticker = () => {
+    if (!loggedInUser) return;
+
+    const optimisticMessage: Message = {
+      id: `optimistic-${Date.now()}`,
+      matchId: match.id,
+      senderId: loggedInUser.id,
+      content: '/sticker hey',
+      type: 'text',
+      timestamp: new Date().toISOString(),
+      isRead: false,
+    };
+
+    // Optimistically update the UI
+    useMatchStore.setState(state => {
+      const matches = state.matches.map(m => {
+        if (m.id === match.id) {
+          return {
+            ...m,
+            messages: [...m.messages, optimisticMessage]
+          };
+        }
+        return m;
+      });
+      return { matches };
+    });
+
+    // Send the message to the server
     addMessage(match.id, {
       matchId: match.id,
-      senderId: currentUser.id,
+      senderId: loggedInUser.id,
       content: '/sticker hey',
       type: 'text',
     });
     setShowConversationStarter(false);
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
+
+    console.log('[DEBUG] ChatConversation: Checking message for filtered words...');
+    const filteredWord = await wordFilterService.checkMessage(trimmedMessage);
+    console.log('[DEBUG] ChatConversation: Filtered word check result:', filteredWord);
+
+    if (filteredWord) {
+      toast.error('Your message contains restricted content and was not sent.');
+      console.log('[DEBUG] ChatConversation: Filtered word found. Taking action...');
+
+      // Unmatch the users
+      console.log('[DEBUG] ChatConversation: Calling unmatch_user RPC...');
+      await supabase.rpc('unmatch_user', {
+        user_id1: loggedInUser.id,
+        user_id2: otherUser.id
+      });
+
+      // Record the strike and notify the user
+      console.log('[DEBUG] ChatConversation: Calling record_strike_and_notify RPC...');
+      await supabase.rpc('record_strike_and_notify', {
+        p_user_id: loggedInUser.id,
+        p_word: filteredWord.word
+      });
+
+      // Navigate away from the chat
+      console.log('[DEBUG] ChatConversation: Navigating away...');
+      navigate('/chat');
+      return; // Stop the message from being sent
+    }
 
     // Hide conversation starter when sending a message
     if (showConversationStarter) {
@@ -260,11 +357,11 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
-    setTyping(match.id, currentUser.id, false);
+    setTyping(match.id, loggedInUser.id, false);
 
     addMessage(match.id, {
       matchId: match.id,
-      senderId: currentUser.id,
+      senderId: loggedInUser.id,
       content: message,
       type: 'text',
     });
@@ -282,14 +379,14 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
 
     // Start typing indicator
     if (newMessage.trim()) {
-      setTyping(match.id, currentUser.id, true);
+      setTyping(match.id, loggedInUser.id, true);
       
       // Broadcast typing event
       const channel = supabase.channel('messages-channel');
       channel.send({
         type: 'broadcast',
         event: 'typing',
-        payload: { matchId: match.id, userId: currentUser.id, isTyping: true },
+        payload: { matchId: match.id, userId: loggedInUser.id, isTyping: true },
       });
       
       // Clear existing timeout
@@ -299,13 +396,13 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
       
       // Set new timeout to stop typing after 2 seconds of inactivity
       typingTimeoutRef.current = setTimeout(() => {
-        setTyping(match.id, currentUser.id, false);
+        setTyping(match.id, loggedInUser.id, false);
         
         // Broadcast stop typing event
         channel.send({
           type: 'broadcast',
           event: 'typing',
-          payload: { matchId: match.id, userId: currentUser.id, isTyping: false },
+          payload: { matchId: match.id, userId: loggedInUser.id, isTyping: false },
         });
         
         typingTimeoutRef.current = null;
@@ -316,14 +413,14 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
         clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = null;
       }
-      setTyping(match.id, currentUser.id, false);
+      setTyping(match.id, loggedInUser.id, false);
       
       // Broadcast stop typing event
       const channel = supabase.channel('messages-channel');
       channel.send({
         type: 'broadcast',
         event: 'typing',
-        payload: { matchId: match.id, userId: currentUser.id, isTyping: false },
+        payload: { matchId: match.id, userId: loggedInUser.id, isTyping: false },
       });
     }
   };
@@ -339,122 +436,109 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
         clearTimeout(typingTimeoutRef.current);
       }
       // Stop typing when leaving the chat
-      setTyping(match.id, currentUser.id, false);
+      setTyping(match.id, loggedInUser.id, false);
     };
   }, []);
 
   // Check if other user is typing in this match
   const otherUserTyping = typingUsers[match.id]?.includes(otherUser.id) || false;
 
-
-  const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
-  const isVip = acct === 'vip';
-  const isPro = acct === 'pro';
   return (
     <div className={`h-screen flex flex-col text-white relative ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#2b0f16] to-[#120508]'}`}>
-      <div className="absolute inset-0 bg-no-repeat bg-center bg-cover opacity-5 z-0" style={{ backgroundImage: "url('/Upendo Chat Theme.png')" }}></div>
-      <div className="relative h-full flex flex-col z-10">
-        {/* Header */}
-        <div className={`flex items-center justify-between p-4 border-b border-white/10 ${isVip ? 'bg-black' : isPro ? 'bg-[#0b2237]' : ''}`}>
-          <div className="flex items-center gap-3">
-            <button onClick={handleBack} className="p-1">
-              <ArrowLeft />
-            </button>
-            <div className="relative">
-              <SafeImage src={otherUser.photos[0]} alt="avatar" className="w-10 h-10 rounded-full" fallbackSrc="/upendo-logo.png" />
-              <div className={`absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 ${isVip ? 'border-black' : isPro ? 'border-[#0b2237]' : 'border-[#2b0f16]'}`}></div>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <Link to={`/user/${otherUser.id}`} className="font-semibold hover:underline">
-                  {otherUser.name}
-                </Link>
-                {/* Premium badge for Pro/VIP users */}
-                {((otherUser as any).accountType === 'pro' || (otherUser as any).accountType === 'vip' || (otherUser as any).account_type === 'pro' || (otherUser as any).account_type === 'vip') && (
-                  <div className="flex items-center">
-                    {((otherUser as any).accountType || (otherUser as any).account_type) === 'vip' ? (
-                      <Shield className="w-4 h-4 text-black" />
-                    ) : (
-                      <Shield className="w-4 h-4 text-blue-500" />
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="text-xs text-gray-400">
-                {isOnline ? <span className={`${isVip ? 'text-amber-300' : isPro ? 'text-sky-400' : 'text-pink-400'}`}>{t('chat.onlineNow')}</span> : t('chat.activeAgo', { time: lastActive })}
-              </div>
-            </div>
-          </div>
+      <div className="absolute inset-0 bg-no-repeat bg-center bg-cover opacity-5 z-0" style={{ backgroundImage: "url('/upendo-chat-theme.png')" }}></div>
+      {/* Header */}
+      <div className={`flex items-center justify-between p-4 border-b border-white/10 ${isVip ? 'bg-black' : isPro ? 'bg-[#0b2237]' : ''} flex-shrink-0 z-10`}>
+        <div className="flex items-center gap-3">
+          <button onClick={handleBack} className="p-1">
+            <ArrowLeft />
+          </button>
           <div className="relative">
-            <button onClick={() => setMenuOpen(!isMenuOpen)} className="p-2">
-              <MoreVertical />
-            </button>
-            <AnimatePresence>
-              {isMenuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                  transition={{ duration: 0.1 }}
-                  className={`absolute right-0 mt-2 w-48 rounded-md shadow-lg z-10 ${
-                    isVip ? 'bg-black/80 border border-amber-400/30' : isPro ? 'bg-[#0b1a2b]/90 border border-sky-400/30' : 'bg-[#3a1a22]'
-                  }`}
-                >
-                  <ul className="py-1">
-                    <li>
-                      <button onClick={handleUnmatchClick} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2">
-                        <UserX size={16} /> {t('chat.menu.unmatch')}
-                      </button>
-                    </li>
-                    <li>
-                      <button onClick={handleBlockClick} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2">
-                        <ShieldX size={16} /> {t('chat.menu.block')}
-                      </button>
-                    </li>
-                    <li>
-                      <button onClick={() => handleReport('')} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-white/10 flex items-center gap-2">
-                        <Flag size={16} /> {t('chat.menu.report')}
-                      </button>
-                    </li>
-                  </ul>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <SafeImage src={otherUser.photos[0]} alt="avatar" className="w-10 h-10 rounded-full" fallbackSrc="/upendo-logo.png" />
+            <div className={`absolute bottom-0 right-0 w-3 h-3 bg-green-400 rounded-full border-2 ${isVip ? 'border-black' : isPro ? 'border-[#0b2237]' : 'border-[#2b0f16]'}`}></div>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <Link to={`/user/${otherUser.id}`} className="font-semibold hover:underline text-white">
+                {otherUser.name}
+              </Link>
+            </div>
+            <div className={cn("text-xs font-bold", otherUserTheme.primary)}>
+              {isOnline ? t('chat.onlineNow') : t('chat.activeAgo', { time: lastActive })}
+            </div>
           </div>
         </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {showConversationStarter && (
-            <ConversationStarter onSendHey={handleSendHeySticker} />
-          )}
-          {!showConversationStarter && (
-            <>
-              {match.messages.map((msg, index) => {
-                const showDateSeparator = shouldShowDateSeparator(msg, match.messages[index - 1]);
-                return (
-                  <React.Fragment key={msg.id}>
-                    {showDateSeparator && (
-                      <div className="text-center text-xs text-white/40 uppercase">
-                        {formatMessageDate(msg.timestamp)}
-                      </div>
-                    )}
-                    <MessageBubble message={msg} onReply={() => {}} otherUserAvatar={otherUser.photos ? otherUser.photos[0] : undefined} currentUserAvatar={aCurrentUser.photos ? aCurrentUser.photos[0] : undefined} />
-                  </React.Fragment>
-                );
-              })}
-            </>
-          )}
-          {otherUserTyping && <TypingIndicator />}
-          <div ref={messagesEndRef} />
+        <div className="relative">
+          <button onClick={() => setMenuOpen(!isMenuOpen)} className="p-2">
+            <MoreVertical />
+          </button>
         </div>
+      </div>
 
-        {/* Input */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -10 }}
+            transition={{ duration: 0.1 }}
+            className={`absolute top-16 right-4 w-48 rounded-md shadow-lg z-50 ${
+              isVip ? 'bg-black/80 border border-amber-400/30' : isPro ? 'bg-[#0b1a2b]/90 border border-sky-400/30' : 'bg-[#3a1a22]'
+            }`}
+          >
+            <ul className="py-1">
+              <li>
+                <button onClick={handleUnmatchClick} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2">
+                  <UserX size={16} /> {t('chat.menu.unmatch')}
+                </button>
+              </li>
+              <li>
+                <button onClick={handleBlockClick} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 flex items-center gap-2">
+                  <ShieldX size={16} /> {t('chat.menu.block')}
+                </button>
+              </li>
+              <li>
+                <button onClick={() => handleReport('')} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-white/10 flex items-center gap-2">
+                  <Flag size={16} /> {t('chat.menu.report')}
+                </button>
+              </li>
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 z-10">
+        {showConversationStarter && (
+          <ConversationStarter onSendHey={handleSendHeySticker} />
+        )}
+        {!showConversationStarter && (
+          <>
+            {match.messages.map((msg, index) => {
+              const showDateSeparator = shouldShowDateSeparator(msg, match.messages[index - 1]);
+              return (
+                <React.Fragment key={msg.id}>
+                  {showDateSeparator && (
+                    <div className="text-center text-xs text-white/40 uppercase">
+                      {formatMessageDate(msg.timestamp)}
+                    </div>
+                  )}
+                  <MessageBubble message={msg} onReply={() => {}} otherUser={otherUser} currentUserInMatch={currentUserInMatch} viewerTheme={theme} />
+                </React.Fragment>
+              );
+            })}
+          </>
+        )}
+        {otherUserTyping && <TypingIndicator viewerTheme={theme} />}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="flex-shrink-0 z-10">
         <form onSubmit={handleSendMessage} className="p-3 border-t border-white/10 flex items-center gap-2">
           <button
             type="button"
             onClick={handleGifButtonClick}
-            className={`p-2 rounded-full bg-white/10 transition ${!isVip ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/20'}`}
+            className={`p-2 rounded-full transition ${!isVip ? 'opacity-50 cursor-not-allowed' : theme.bubble.sender + ' hover:opacity-80'}`}
           >
             <Smile size={18} />
           </button>
@@ -466,7 +550,7 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
           />
           <button
             type="submit"
-            className={`p-3 rounded-full transition ${isVip ? 'bg-amber-400 text-black hover:bg-amber-500' : isPro ? 'bg-[#ff7f50] hover:bg-[#ff5e57] text-white' : 'bg-pink-500 hover:bg-pink-600'}`}
+            className={cn("p-3 rounded-full transition text-white", theme.bubble.sender)}
           >
             <Send size={18} />
           </button>
@@ -487,11 +571,13 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
               initial={{ scale: 0.9 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.9 }}
-              className="bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] rounded-2xl p-6 mx-4 max-w-sm w-full border border-pink-500/30 shadow-2xl relative"
+              className={`bg-gradient-to-br ${isVip ? 'from-black to-[#0b0b0b] border-amber-400/30' : isPro ? 'from-[#071521] to-[#0b2237] border-cyan-400/30' : 'from-[#1a0f14] to-[#2E0C13] border-pink-500/30'} rounded-2xl p-6 mx-4 max-w-sm w-full border shadow-2xl relative`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Glow Effect */}
-              <div className="absolute inset-0 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
+              <div className={`absolute inset-0 rounded-2xl blur-xl ${
+                isVip ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : isPro ? 'bg-gradient-to-r from-cyan-400/10 to-blue-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10'
+              }`}></div>
               
               <h3 className="text-lg font-semibold mb-2 text-white relative z-10">{t('chat.unmatch.title')}</h3>
               <p className="text-gray-300 mb-4 relative z-10">{t('chat.unmatch.body', { name: otherUser.name })}</p>
@@ -504,7 +590,9 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
                 </button>
                 <button
                   onClick={handleUnmatch}
-                  className="px-4 py-2 rounded-full bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-700 hover:to-pink-600 transition text-white hover:scale-105 shadow-lg shadow-pink-500/25"
+                  className={`px-4 py-2 rounded-full transition text-white hover:scale-105 shadow-lg ${
+                    isVip ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-amber-500/25' : isPro ? 'bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 shadow-cyan-500/25' : 'bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-700 hover:to-pink-600 shadow-pink-500/25'
+                  }`}
                 >
                   {t('chat.unmatch.confirm')}
                 </button>
@@ -527,11 +615,13 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
               initial={{ scale: 0.9 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.9 }}
-              className="bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] rounded-2xl p-6 mx-4 max-w-sm w-full border border-pink-500/30 shadow-2xl relative"
+              className={`bg-gradient-to-br ${isVip ? 'from-black to-[#0b0b0b] border-amber-400/30' : isPro ? 'from-[#071521] to-[#0b2237] border-cyan-400/30' : 'from-[#1a0f14] to-[#2E0C13] border-pink-500/30'} rounded-2xl p-6 mx-4 max-w-sm w-full border shadow-2xl relative`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Glow Effect */}
-              <div className="absolute inset-0 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
+              <div className={`absolute inset-0 rounded-2xl blur-xl ${
+                isVip ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : isPro ? 'bg-gradient-to-r from-cyan-400/10 to-blue-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10'
+              }`}></div>
               
               <h3 className="text-lg font-semibold mb-2 text-white relative z-10">{t('chat.block.title')}</h3>
               <p className="text-gray-300 mb-4 relative z-10">{t('chat.block.body', { name: otherUser.name })}</p>
@@ -566,7 +656,7 @@ const ChatConversation: React.FC<{ match: Match }> = ({ match }) => {
             onSelect={(gifUrl) => {
               addMessage(match.id, {
                 matchId: match.id,
-                senderId: currentUser.id,
+                senderId: loggedInUser.id,
                 content: gifUrl,
                 type: 'gif',
               });

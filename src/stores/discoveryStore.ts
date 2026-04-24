@@ -3,9 +3,11 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuthStore } from './authStore';
 
 interface DiscoveryState {
-  potentialMatches: any[];
+  potentialMatches: User[];
+  isFetching: boolean; // <-- NEW
   fetchPotentialMatches: () => Promise<void>;
   removePotentialMatch: (userId: string) => void;
+  reset: () => void;
 }
 
 const calculateAge = (dob?: string | Date) => {
@@ -21,17 +23,21 @@ const calculateAge = (dob?: string | Date) => {
   return age;
 };
 
-const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
+export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
   potentialMatches: [],
+  isFetching: false,
 
   fetchPotentialMatches: async () => {
     const { user } = useAuthStore.getState();
-    if (!user) return;
+    if (!user || get().isFetching) return;
+
+    set({ isFetching: true });
 
     // 1. Run queries in parallel to save time
-    const [matchesRes, swipedRes] = await Promise.all([
+    const [matchesRes, likedRes, dislikedRes] = await Promise.all([
       supabase.rpc('find_profiles_near_user', { p_user_id: user.id }),
-      supabase.from('likes').select('liked_id').eq('liker_id', user.id)
+      supabase.from('likes').select('liked_id').eq('liker_id', user.id),
+      supabase.from('dislikes').select('disliked_user_id').eq('user_id', user.id) // <-- NEW
     ]);
 
     if (matchesRes.error) {
@@ -39,7 +45,9 @@ const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
       return;
     }
 
-    const swipedIds = new Set(swipedRes.data?.map(s => s.liked_id) || []);
+    const likedIds = new Set(likedRes.data?.map(s => s.liked_id) || []);
+    const dislikedIds = new Set(dislikedRes.data?.map(s => s.disliked_user_id) || []); // <-- NEW
+    const swipedIds = new Set([...likedIds, ...dislikedIds]); // <-- COMBINED
 
     // 2. Filter with console logs to see WHERE profiles are being dropped
     const raw = matchesRes.data || []; 
@@ -88,7 +96,7 @@ const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
       };
     });
 
-    set({ potentialMatches: enrichedMatches });
+    set({ potentialMatches: enrichedMatches, isFetching: false });
   },
 
   removePotentialMatch: (userId: string) => {
@@ -100,4 +108,4 @@ const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
 
 
 
-export { useDiscoveryStore };
+

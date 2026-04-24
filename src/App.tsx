@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import { useAuthStore } from './stores/authStore';
+import { wordFilterService } from './services/wordFilterService';
 import { useAppSettingsStore } from './stores/appSettingsStore';
 import { useMatchStore } from './stores/matchStore.tsx';
 import { useNotificationStore } from './stores/notificationStore';
@@ -48,24 +49,29 @@ import usePresenceStore from './stores/presenceStore';
 import i18n from 'i18next';
 import './lib/i18n';
 
+import { resetAllStores } from './stores/reset';
+
+import { useLikeStore } from './stores/likeStore';
+
 function App() {
-  const { checkUser, user } = useAuthStore();
+  const { checkUser, user, loading } = useAuthStore(); // Use loading state
   const { getSettings } = useAppSettingsStore();
-  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    checkUser();
+    const initializeApp = async () => {
+      await checkUser();
+      // Only load filtered words after auth is complete to avoid race conditions
+      wordFilterService.loadFilteredWords();
+    };
+    
+    initializeApp();
     
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
-        // Clear local storage and Zustand state
-        localStorage.removeItem('upendo-auth-token');
-        useAuthStore.getState().setSession(null);
-        useAuthStore.getState().setProfile(null);
+      if (event === 'SIGNED_OUT') {
+        resetAllStores();
       } else if (session) {
         useAuthStore.getState().setSession(session);
       }
-      // Always run checkUser to sync profile and handle routing
       checkUser();
     });
 
@@ -75,17 +81,67 @@ function App() {
   }, [checkUser]);
 
   useEffect(() => {
-    if (user) {
-      getSettings();
-      useNotificationStore.getState().fetchNotifications();
-      const unsubscribeMatches = useMatchStore.getState().initializeRealtime();
-      usePresenceStore.getState().initializePresence();
+    if (!user) return;
 
-      return () => {
-        unsubscribeMatches();
-        usePresenceStore.getState().unsubscribePresence();
-      };
+    getSettings();
+    useNotificationStore.getState().fetchNotifications();
+    const unsubscribeMatches = useMatchStore.getState().initializeRealtime?.();
+    usePresenceStore.getState().initializePresence();
+    useLikeStore.getState().fetchLikedUsers(user.id);
+
+    const store = useMatchStore.getState();
+    let profileChangesChannel: any;
+    if (typeof store.subscribeToProfileChanges === "function") {
+      profileChangesChannel = store.subscribeToProfileChanges();
     }
+
+    // Correctly subscribe to user-specific notifications
+    const notificationsChannel = supabase
+      .channel(`notifications:${user.id}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const notification = payload.new as any;
+          useNotificationStore.getState().addNotification({
+            id: notification.id,
+            type: notification.type,
+            isRead: notification.isRead || false,
+            timestamp: new Date(notification.created_at),
+            message: notification.message,
+            relatedUser: notification.relatedUser,
+            link: notification.link,
+            photo_url: notification.photo_url
+          });
+          toast.success('You have a new notification!');
+        }
+      )
+      .subscribe();
+
+    const profileUpdateChannel = supabase
+      .channel(`profile-updates:${user.id}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+        (payload) => {
+          const oldStrikes = useAuthStore.getState().profile?.strikes || 0;
+          const newStrikes = payload.new.strikes;
+          if (newStrikes > oldStrikes) {
+            toast.error('You have received a new strike!', { icon: '⚠️' });
+          }
+          // Re-fetch user profile to get all latest data
+          useAuthStore.getState().checkUser();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      unsubscribeMatches?.();
+      usePresenceStore.getState().unsubscribePresence();
+      if (profileChangesChannel) {
+        supabase.removeChannel(profileChangesChannel);
+      }
+      supabase.removeChannel(notificationsChannel);
+      supabase.removeChannel(profileUpdateChannel);
+    };
   }, [user, getSettings]);
 
   useEffect(() => {
@@ -113,21 +169,18 @@ function App() {
     } catch {}
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 5000);
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
     <Router>
-      <SplashScreen visible={showSplash} />
+      <SplashScreen visible={loading} />
       <OfflineNotifier />
-      <RouteGuard>
-        <div className={`min-h-screen`}>
-          <AppRoutes />
-          <Toaster position="top-center" />
-        </div>
-      </RouteGuard>
+      {!loading && (
+        <RouteGuard>
+          <div className={`min-h-screen`}>
+            <AppRoutes />
+            <Toaster position="top-center" />
+          </div>
+        </RouteGuard>
+      )}
     </Router>
   );
 }

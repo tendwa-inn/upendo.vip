@@ -8,14 +8,16 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useTranslation } from 'react-i18next';
 import ChatSettingsModal from '../components/modals/ChatSettingsModal';
+import SystemMessageModal from '../components/modals/SystemMessageModal';
+import { getTheme } from '../styles/theme';
+import { cn } from '../lib/utils';
 
 const SystemMessagesPage: React.FC = () => {
   const [messages, setMessages] = useState<SystemMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMessage, setSelectedMessage] = useState<SystemMessage | null>(null);
-  const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
-  const isVip = acct === 'vip';
-  const isPro = acct === 'pro';
+  const { profile } = useAuthStore();
+  const theme = getTheme(profile?.account_type || profile?.subscription);
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -39,12 +41,12 @@ const SystemMessagesPage: React.FC = () => {
   }
 
   return (
-    <div className={`h-screen flex flex-col text-white ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
-      <div className={`flex items-center p-4 pt-safe-top border-b border-white/10 ${isVip ? 'bg-black' : isPro ? 'bg-[#071521]' : ''}`}>
+    <div className={cn("h-screen flex flex-col text-white", theme.background)}>
+      <div className={cn("flex items-center p-4 pt-safe-top border-b border-white/10", theme.stickyHeader)}>
         <Link to="/chat" className="p-2">
           <ArrowLeft className="w-6 h-6" />
         </Link>
-        <h1 className={`text-xl font-bold text-center flex-1 ${isVip ? 'text-amber-400' : isPro ? 'text-[#ff7f50]' : ''}`}>{t('announcements')}</h1>
+        <h1 className={cn("text-xl font-bold text-center flex-1", theme.primary)}>{t('announcements')}</h1>
         <div className="w-8"></div> {/* Spacer */}
       </div>
 

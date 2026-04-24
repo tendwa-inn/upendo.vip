@@ -24,9 +24,9 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({ isOpen, onClose }
     await updateUserProfile({ ghostModeEnabled: newStatus });
   };
 
-  const isPremium = profile?.accountType === 'pro' || profile?.accountType === 'vip';
-  const isVip = profile?.accountType === 'vip';
-  const isPro = profile?.accountType === 'pro';
+  const isPremium = profile?.account_type === 'pro' || profile?.account_type === 'vip';
+  const isVip = profile?.account_type === 'vip';
+  const isPro = profile?.account_type === 'pro';
 
   return (
     <Portal>
@@ -51,7 +51,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({ isOpen, onClose }
             >
               {/* Glow Effect */}
               <div className={`absolute inset-0 rounded-t-2xl blur-xl ${
-                isVip ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : (isPro ? 'bg-gradient-to-r from-[#ff7f50]/10 to-orange-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10')
+                isVip ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : (isPro ? 'bg-gradient-to-r from-cyan-400/10 to-blue-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10')
               }`}></div>
 
               <div className="p-4 border-b border-white/10 flex items-center justify-between relative z-10">
@@ -72,9 +72,9 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({ isOpen, onClose }
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" checked={isAutoUnmatchEnabled} onChange={toggleAutoUnmatch} className="sr-only peer" />
                       <div className={`w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-4 ${
-                        isVip ? 'peer-focus:ring-amber-400/50' : (isPro ? 'peer-focus:ring-[#ff7f50]/50' : 'peer-focus:ring-pink-500/50')
+                        isVip ? 'peer-focus:ring-amber-400/50' : (isPro ? 'peer-focus:ring-cyan-400/50' : 'peer-focus:ring-pink-500/50')
                       } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${
-                        isVip ? 'peer-checked:bg-amber-400' : (isPro ? 'peer-checked:bg-[#ff7f50]' : 'peer-checked:bg-pink-500')
+                        isVip ? 'peer-checked:bg-amber-400' : (isPro ? 'peer-checked:bg-cyan-400' : 'peer-checked:bg-pink-500')
                       }`}></div>
                     </label>
                   </div>
@@ -89,9 +89,9 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({ isOpen, onClose }
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" disabled={!isPremium} checked={isGhostMode} onChange={toggleGhostMode} className="sr-only peer" />
                       <div className={`w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-4 ${
-                        isVip ? 'peer-focus:ring-amber-400/50' : (isPro ? 'peer-focus:ring-[#ff7f50]/50' : 'peer-focus:ring-pink-500/50')
+                        isVip ? 'peer-focus:ring-amber-400/50' : (isPro ? 'peer-focus:ring-cyan-400/50' : 'peer-focus:ring-pink-500/50')
                       } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${
-                        isVip ? 'peer-checked:bg-amber-400' : (isPro ? 'peer-checked:bg-[#ff7f50]' : 'peer-checked:bg-pink-500')
+                        isVip ? 'peer-checked:bg-amber-400' : (isPro ? 'peer-checked:bg-cyan-400' : 'peer-checked:bg-pink-500')
                       }`}></div>
                     </label>
                   </div>
@@ -112,9 +112,9 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({ isOpen, onClose }
                         className="sr-only peer" 
                       />
                       <div className={`w-11 h-6 bg-gray-600 rounded-full peer peer-focus:ring-4 ${
-                        isVip ? 'peer-focus:ring-amber-400/50' : (isPro ? 'peer-focus:ring-[#ff7f50]/50' : 'peer-focus:ring-pink-500/50')
+                        isVip ? 'peer-focus:ring-amber-400/50' : (isPro ? 'peer-focus:ring-cyan-400/50' : 'peer-focus:ring-pink-500/50')
                       } peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${
-                        isVip ? 'peer-checked:bg-amber-400' : (isPro ? 'peer-checked:bg-[#ff7f50]' : 'peer-checked:bg-pink-500')
+                        isVip ? 'peer-checked:bg-amber-400' : (isPro ? 'peer-checked:bg-cyan-400' : 'peer-checked:bg-pink-500')
                       }`}></div>
                     </label>
                   </div>
@@ -124,7 +124,7 @@ const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({ isOpen, onClose }
                   {!isPremium && (
                     <div className="text-center pt-4">
                       <button className={`font-bold py-2 px-4 rounded-full transition-all duration-200 transform hover:scale-105 ${
-                        isVip ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/25 hover:bg-amber-500' : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-lg shadow-pink-500/25 hover:from-pink-700 hover:to-pink-600'
+                        isVip ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/25 hover:bg-amber-500' : (isPro ? 'bg-cyan-400 text-white shadow-lg shadow-cyan-400/25 hover:bg-cyan-500' : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-lg shadow-pink-500/25 hover:from-pink-700 hover:to-pink-600')
                       }`}>
                         {t('chatSettings.upgradeCta')}
                       </button>

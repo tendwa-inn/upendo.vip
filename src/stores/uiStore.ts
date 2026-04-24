@@ -19,6 +19,7 @@ export const useUiStore = create<UiState>()(
       isProfileSetupModalOpen: false,
       openProfileSetupModal: () => set({ isProfileSetupModalOpen: true }),
       closeProfileSetupModal: () => set({ isProfileSetupModalOpen: false }),
+      reset: () => set({ buttonStyle: 'upendo-color', isProfileSetupModalOpen: false }),
     }),
     {
       name: 'ui-settings-storage',

@@ -67,14 +67,20 @@ const CreateProfilePage: React.FC = () => {
         <IoArrowBack size={24} />
       </button>
       <div
-        className="absolute inset-0 z-0"
+        className="absolute inset-0 z-0 bg-cover bg-center opacity-10 md:transform-none md:scale-100"
         style={{
           backgroundImage: 'url(/SIGN%20UP.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          opacity: 0.1,
         }}
       />
+      {/* Mobile overlay zoom out effect */}
+      <style jsx>{`
+        @media (max-width: 768px) {
+          .absolute.inset-0.z-0 {
+            transform: scale(1.5);
+            transform-origin: center;
+          }
+        }
+      `}</style>
       <div className="relative z-10 w-full max-w-md">
         <AnimatePresence mode="wait">
           {renderStep()}

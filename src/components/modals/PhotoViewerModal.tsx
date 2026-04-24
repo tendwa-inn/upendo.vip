@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Plus, Trash2, Edit } from 'lucide-react';
 
 const variants = {
   enter: (direction: number) => ({
@@ -19,7 +19,7 @@ const variants = {
   })
 };
 
-const PhotoViewerModal = ({ photos, startIndex, onClose, onAdd, onDelete }) => {
+const PhotoViewerModal = ({ photos, startIndex, onClose, onAdd, onDelete, onEdit, isReadOnly = false }) => {
   const [[page, direction], setPage] = useState([startIndex, 0]);
 
   const paginate = (newDirection: number) => {
@@ -45,7 +45,7 @@ const PhotoViewerModal = ({ photos, startIndex, onClose, onAdd, onDelete }) => {
           animate="center"
           exit="exit"
           transition={{ x: { type: "tween", ease: "easeInOut", duration: 0.4 }, opacity: { duration: 0.4 } }}
-          className="max-h-[80vh] max-w-[80vw] object-contain"
+          className="max-h-[95vh] max-w-full md:max-h-[85vh] md:max-w-[85vw] object-contain"
         />
       </AnimatePresence>
       
@@ -53,9 +53,16 @@ const PhotoViewerModal = ({ photos, startIndex, onClose, onAdd, onDelete }) => {
         <X className="w-7 h-7" />
       </button>
 
-      <button onClick={() => { onDelete(photos[imageIndex]); onClose(); }} className="absolute top-5 left-5 p-2 rounded-full text-white bg-white/10 hover:bg-white/20">
-        <Trash2 className="w-7 h-7" />
-      </button>
+      {!isReadOnly && (
+        <div className="absolute top-5 left-5 flex gap-2">
+          <button onClick={() => { onDelete(photos[imageIndex]); onClose(); }} className="p-2 rounded-full text-white bg-white/10 hover:bg-white/20">
+            <Trash2 className="w-7 h-7" />
+          </button>
+          <button onClick={() => onEdit(photos[imageIndex])} className="p-2 rounded-full text-white bg-white/10 hover:bg-white/20">
+            <Edit className="w-7 h-7" />
+          </button>
+        </div>
+      )}
 
       {photos.length < 6 && (
         <button onClick={onAdd} className="absolute bottom-5 right-5 p-2 rounded-full text-white bg-white/10 hover:bg-white/20">

@@ -32,7 +32,7 @@ export interface User {
   messageRequestsSent?: number;
   messageRequestResetDate?: Date;
   role?: string;
-  accountType?: 'free' | 'pro' | 'vip';
+  account_type?: 'free' | 'pro' | 'vip';
   subscriptionTier?: string;
   ghostModeEnabled?: boolean;
   relationshipIntent?: string;

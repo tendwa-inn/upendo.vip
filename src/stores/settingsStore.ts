@@ -17,7 +17,7 @@ export const useSettingsStore = create<SettingsState>()(
       isReadReceiptsEnabled: true,
       toggleReadReceipts: () => {
         const { profile } = useAuthStore.getState();
-        const isPremium = profile?.accountType === 'pro' || profile?.accountType === 'vip';
+        const isPremium = profile?.account_type === 'pro' || profile?.accountType === 'vip';
         
         // Only allow premium users to toggle read receipts
         if (isPremium) {

@@ -162,7 +162,7 @@ const LoginPage: React.FC = () => {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={handleInstall}
-          className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-gradient-to-r from-rose-700 to-purple-800 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/20 backdrop-blur-sm"
+          className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-gradient-to-r from-rose-700 to-purple-800 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/20 backdrop-blur-sm opacity-40"
           style={{
             background: 'linear-gradient(135deg, #be185d, #6b21a8)',
             boxShadow: '0 4px 15px rgba(190, 24, 93, 0.3)'

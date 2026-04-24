@@ -8,9 +8,10 @@ import { formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import UpgradeModal from '../modals/UpgradeModal';
 
 import { supabase } from '../../lib/supabaseClient';
-import { useMatchStore } from '../../stores/matchStore.tsx';
+import { useModalStore } from '../../stores/modalStore';
+import StrikeInfoModal from '../modals/StrikeInfoModal';
 
-const PINK_HEART_URL = '/Notifications Image Icon/Upendo Notifications.png';
+const FALLBACK_ICON_URL = '/icons/pink_ghost_icon.png';
 
 const formatTimestamp = (timestamp: string | Date): string => {
   if (!timestamp || isNaN(new Date(timestamp).getTime())) return '';
@@ -38,6 +39,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
 
   const { markAsRead } = useNotificationStore();
   const navigate = useNavigate();
+  const { isStrikeInfoModalOpen, closeStrikeInfoModal, openStrikeInfoModal } = useModalStore();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const handleNotificationClick = () => {
@@ -51,7 +53,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
       case 'new-like':
         if (notification.relatedUser?.id) {
           // Check if user is premium
-          const isPremium = profile?.accountType === 'pro' || profile?.accountType === 'vip';
+          const isPremium = profile?.account_type === 'pro' || profile?.accountType === 'vip';
           if (isPremium) {
             navigate(`/user/${notification.relatedUser.id}`);
           } else {
@@ -143,7 +145,15 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
       case 'system':
         return notification.message;
       case 'promo-redemption':
-        return notification.message; // Display the message from the DB
+        case 'account-issue':
+        return (
+          <div>
+            <p>{notification.message}</p>
+            <button onClick={(e) => { e.stopPropagation(); openStrikeInfoModal(); }} className="text-sm text-yellow-400 hover:underline mt-2">
+              Click to view details
+            </button>
+          </div>
+        );
       default:
         return notification.message || 'New notification';
     }
@@ -155,7 +165,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
   const userPhoto = notification.relatedUser?.photos?.[0];
   const systemPhotoUrl = notification.photo_url;
 
-  let imageSrc = PINK_HEART_URL;
+  let imageSrc = FALLBACK_ICON_URL;
   if (isUserEvent && userPhoto) {
     if (userPhoto.startsWith('http')) {
       imageSrc = userPhoto;
@@ -186,7 +196,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
               onError={(e) => {
                 if (e.currentTarget.dataset.fallbackUsed !== 'true') {
                   e.currentTarget.dataset.fallbackUsed = 'true';
-                  e.currentTarget.src = PINK_HEART_URL;
+                  e.currentTarget.src = FALLBACK_ICON_URL;
                 }
               }}
             />
@@ -200,6 +210,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
         </div>
       </div>
       {showUpgradeModal && <UpgradeModal onClose={() => setShowUpgradeModal(false)} />}
+      <StrikeInfoModal isOpen={isStrikeInfoModalOpen} onClose={closeStrikeInfoModal} />
     </>
   );
 };

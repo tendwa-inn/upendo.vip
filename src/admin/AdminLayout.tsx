@@ -10,8 +10,14 @@ interface AdminLayoutProps {
 }
 
 const AdminLayout: React.FC<AdminLayoutProps> = () => {
-  const { signOut, updateUserProfile } = useAuthStore();
+  const { signOut, updateUserProfile, isAdmin, loading } = useAuthStore();
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (!loading && !isAdmin) {
+      navigate('/login');
+    }
+  }, [isAdmin, loading, navigate]);
 
   const handleLogout = async () => {
     await signOut();
@@ -36,6 +42,18 @@ const AdminLayout: React.FC<AdminLayoutProps> = () => {
     { path: '/admin/dormant', icon: UserX, label: 'Dormant Accounts' },
     { path: '/admin/settings', icon: Settings, label: 'Settings' },
   ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-[#2b0f16] to-[#120508] text-white">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return null; // This will be handled by the redirect in useEffect
+  }
 
   return (
     <div className="flex min-h-screen bg-gradient-to-b from-[#2b0f16] to-[#120508] text-white">

@@ -24,12 +24,13 @@ import { useMatchAnimationStore } from '../stores/matchAnimationStore';
 
 const FindPage: React.FC = () => {
   const { swipeRight, swipeLeft, loadSwipeState } = useSwipeStore();
-  const { potentialMatches, fetchPotentialMatches } = useDiscoveryStore();
+  const { potentialMatches, fetchPotentialMatches, isFetching } = useDiscoveryStore();
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [swipeHistory, setSwipeHistory] = useState<string[]>([]);
   const { user: currentUser, profile } = useAuthStore();
   const { unreadCount, fetchNotifications } = useNotificationStore();
   const { createMatch, matches } = useMatchStore();
-  const { usersWhoLikedMe, fetchUsersWhoLikedMe, removeLike, hasNewLikes, markLikesAsViewed } = useLikesStore();
+  const { usersWhoLikedMe, fetchUsersWhoLikedMe, removeLike, hasNewLikes, markLikesAsViewed, listenForNewLikes, fetchLikedUserIds } = useLikesStore();
   const { usersWhoViewedMe, fetchUsersWhoViewedMe, hasNewViews, markViewsAsViewed } = useViewsStore();
   const { onlineUsers } = usePresenceStore();
   const [isLoading, setIsLoading] = useState(true);
@@ -101,7 +102,7 @@ const FindPage: React.FC = () => {
       return parts.length ? parts[parts.length - 1] : null;
     };
     const meCountry = getCountry((useAuthStore.getState().profile as any)?.location?.name || (useAuthStore.getState().profile as any)?.location_name);
-    const tier = ((useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription || 'free') as 'free' | 'pro' | 'vip';
+    const tier = ((useAuthStore.getState().profile as any)?.account_type || (useAuthStore.getState().profile as any)?.subscription || 'free') as 'free' | 'pro' | 'vip';
     const chosenScope = (localStorage.getItem('locationScope') || 'nearby') as 'nearby'|'country'|'global';
     const tierMax: 'nearby'|'country'|'global' = tier === 'vip' ? 'global' : (tier === 'pro' ? 'country' : 'nearby');
     const effectiveScope: 'nearby'|'country'|'global' = tierMax === 'nearby' ? 'nearby' : (tierMax === 'country' ? (chosenScope === 'nearby' ? 'nearby' : 'country') : chosenScope);
@@ -221,16 +222,27 @@ const FindPage: React.FC = () => {
   useEffect(() => {
     const loadInitialData = async () => {
       setIsLoading(true);
-      await fetchPotentialMatches();
-      await fetchUsersWhoLikedMe();
-      await fetchUsersWhoViewedMe();
-      await fetchNotifications();
-      loadSwipeState();
-      recalcVisibilityForCurrentUser().catch(() => {});
+      await Promise.all([
+        fetchPotentialMatches(),
+        fetchUsersWhoLikedMe(),
+        fetchUsersWhoViewedMe(),
+        fetchNotifications(),
+        fetchLikedUserIds(),
+        loadSwipeState(),
+        recalcVisibilityForCurrentUser()
+      ]);
       setIsLoading(false);
     };
     loadInitialData();
-  }, [fetchPotentialMatches, fetchUsersWhoLikedMe, fetchUsersWhoViewedMe, fetchNotifications, loadSwipeState]);
+
+    // Set up the real-time listener for new likes
+    const unsubscribe = listenForNewLikes();
+
+    // Clean up the listener when the component unmounts
+    return () => {
+      unsubscribe();
+    };
+  }, [fetchPotentialMatches, fetchUsersWhoLikedMe, fetchUsersWhoViewedMe, fetchNotifications, loadSwipeState, listenForNewLikes]);
 
   // Reset deck position if list length or mode changes
   useEffect(() => {
@@ -238,20 +250,100 @@ const FindPage: React.FC = () => {
   }, [potentialMatches.length, swipeMode]);
 
   const handleSwipeRight = React.useCallback(async (userId: string) => {
+    console.log('=== FINDPAGE HANDLE SWIPE RIGHT CALLED ===');
+    console.log('UserId:', userId);
+    console.log('Current potential matches:', potentialMatches.map(u => ({id: u.id, name: u.name})));
+    
     const swipedUser = potentialMatches.find((u) => u.id === userId);
-    if (!swipedUser) return;
+    console.log('Found swiped user:', swipedUser);
+    
+    if (!swipedUser) {
+      console.log('ERROR: Swiped user not found in potential matches!');
+      return;
+    }
 
+    console.log('Calling swipeRight with userId:', userId);
     const { matched } = await swipeRight(userId);
+    console.log('Swipe result - matched:', matched);
+    
     if (matched) {
+      console.log('IT\'S A MATCH! Showing animation');
       useMatchAnimationStore.getState().showMatchAnimation(swipedUser);
     }
-    setCurrentCardIndex(prev => prev + 1);
-  }, [potentialMatches, swipeRight]);
+    
+    console.log('Adding user to swipe history:', userId);
+    setSwipeHistory(prev => [...prev, userId]);
+    
+    console.log('Advancing card index...');
+    setCurrentCardIndex(prev => {
+      const newIndex = prev + 1;
+      console.log('Advanced from', prev, 'to', newIndex);
+      return newIndex;
+    });
+    
+    // Fetch more profiles if running low
+    if (currentCardIndex >= potentialMatches.length - 3) {
+      console.log('Running low on profiles, fetching more...');
+      fetchPotentialMatches();
+    }
+  }, [potentialMatches, swipeRight, currentCardIndex, fetchPotentialMatches]);
 
   const handleSwipeLeft = React.useCallback((userId: string) => {
+    console.log('=== FINDPAGE HANDLE SWIPE LEFT CALLED ===');
+    console.log('UserId:', userId);
+    
+    console.log('Calling swipeLeft with userId:', userId);
     swipeLeft(userId);
-    setCurrentCardIndex(prev => prev + 1);
-  }, [swipeLeft]);
+    
+    console.log('Adding user to swipe history:', userId);
+    setSwipeHistory(prev => [...prev, userId]);
+    
+    console.log('Advancing card index...');
+    setCurrentCardIndex(prev => {
+      const newIndex = prev + 1;
+      console.log('Advanced from', prev, 'to', newIndex);
+      return newIndex;
+    });
+    
+    // Fetch more profiles if running low
+    if (currentCardIndex >= potentialMatches.length - 3) {
+      console.log('Running low on profiles, fetching more...');
+      fetchPotentialMatches();
+    }
+  }, [swipeLeft, currentCardIndex, potentialMatches.length, fetchPotentialMatches]);
+
+  const handleRewind = React.useCallback(() => {
+    console.log('=== REWIND BUTTON CLICKED ===');
+    console.log('Current card index:', currentCardIndex);
+    console.log('Swipe history:', swipeHistory);
+    console.log('Potential matches count:', potentialMatches.length);
+    
+    if (currentCardIndex > 0) {
+      console.log('Rewinding is possible, proceeding...');
+      setCurrentCardIndex(prev => {
+        const newIndex = Math.max(0, prev - 1);
+        console.log('Rewinding from', prev, 'to', newIndex);
+        return newIndex;
+      });
+      
+      // Remove the last user from swipe history
+      setSwipeHistory(prev => {
+        const newHistory = prev.slice(0, -1);
+        console.log('Updated swipe history:', newHistory);
+        return newHistory;
+      });
+    } else {
+      console.log('Cannot rewind: already at first card');
+    }
+  }, [currentCardIndex, swipeHistory, potentialMatches.length]);
+
+  // Auto-refresh when running out of profiles
+  useEffect(() => {
+    if (currentCardIndex >= potentialMatches.length - 1 && potentialMatches.length > 0 && !isLoading) {
+      console.log('Running low on profiles, fetching more...');
+      fetchPotentialMatches();
+    }
+  }, [currentCardIndex, potentialMatches.length, isLoading, fetchPotentialMatches]);
 
   const handleApplyFilters = React.useCallback((newFilters: any) => setFilters(newFilters), []);
 
@@ -268,9 +360,16 @@ const FindPage: React.FC = () => {
     return missing;
   }, [profile]);
 
-  const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
+  const acct = (profile as any)?.account_type || (profile as any)?.accountType || (profile as any)?.subscription;
   const isVip = acct === 'vip';
   const isPro = acct === 'pro';
+  
+  // Debug logging
+  console.log('DEBUG - FindPage account detection:');
+  console.log('acct value:', acct);
+  console.log('profile object:', profile);
+  console.log('isVip:', isVip);
+  console.log('isPro:', isPro);
 
   const headerBg = activeTab !== 'discover'
     ? isVip ? 'bg-black' : isPro ? 'bg-[#071521]' : 'bg-[#22090E]'
@@ -301,6 +400,13 @@ const FindPage: React.FC = () => {
 
 
   const currentMatch = orderedPotentialMatches[currentCardIndex];
+  
+  // Debug: Log current state
+  console.log('=== FINDPAGE RENDER ===');
+  console.log('Current card index:', currentCardIndex);
+  console.log('Swipe history length:', swipeHistory.length);
+  console.log('Potential matches length:', potentialMatches.length);
+  console.log('Current match:', currentMatch?.name, currentMatch?.id);
 
   return (
     <div className="fixed inset-0 overflow-hidden overscroll-none text-white">
@@ -334,7 +440,7 @@ const FindPage: React.FC = () => {
               onClick={() => { setActiveTab('views'); markViewsAsViewed(); }}
               className={`relative text-sm font-medium transition-all flex items-center gap-1 ${
                 activeTab === 'views' 
-                  ? 'text-yellow-400 border-b-2 border-yellow-400 pb-1' 
+                  ? `${isVip ? 'text-amber-400 border-amber-400' : isPro ? 'text-cyan-400 border-cyan-400' : 'text-pink-400 border-pink-400'} border-b-2 pb-1` 
                   : 'text-white/70 hover:text-white'
               }`}>
               {t('views')}
@@ -346,15 +452,14 @@ const FindPage: React.FC = () => {
               onClick={() => setActiveTab('discover')}
               className={`text-sm font-medium transition-all ${
                 activeTab === 'discover' 
-                  ? 'text-pink-400 border-b-2 border-pink-400 pb-1' 
+                  ? `${isVip ? 'text-amber-400 border-amber-400' : isPro ? 'text-cyan-400 border-cyan-400' : 'text-pink-400 border-pink-400'} border-b-2 pb-1` 
                   : 'text-white/70 hover:text-white'
-              }`}
-            >{t('swipes')}</button>
+              }`}>{t('swipes')}</button>
             <button
               onClick={() => { setActiveTab('likes'); markLikesAsViewed(); }}
               className={`relative text-sm font-medium transition-all flex items-center gap-1 ${
                 activeTab === 'likes' 
-                  ? 'text-green-400 border-b-2 border-green-400 pb-1' 
+                  ? `${isVip ? 'text-amber-400 border-amber-400' : isPro ? 'text-cyan-400 border-cyan-400' : 'text-pink-400 border-pink-400'} border-b-2 pb-1` 
                   : 'text-white/70 hover:text-white'
               }`}>
               {t('likes')}
@@ -394,20 +499,56 @@ const FindPage: React.FC = () => {
                     user={user}
                     onSwipeLeft={handleSwipeLeft}
                     onSwipeRight={handleSwipeRight}
-                    onRewind={() => {}}
+                    onRewind={handleRewind}
                     onBoost={() => {}}
                     canSwipe={true}
                     isActive={index === 0}
                     currentPhotoIndex={currentPhotoIndex}
                     setCurrentPhotoIndex={setCurrentPhotoIndex}
+                    canRewind={currentCardIndex > 0}
+                    currentCardIndex={currentCardIndex}
+                    swipeHistory={swipeHistory}
                   />
                 ))}
               </AnimatePresence>
-              
+
+              {isFetching && orderedPotentialMatches.length === 0 && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-50">
+                  <div className="neon-spinner"></div>
+                </div>
+              )}
+
+              {orderedPotentialMatches.length === 0 && !isFetching && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+                  <h2 className="text-2xl font-bold mb-2">{t('noMoreProfiles')}</h2>
+                  <p className="text-gray-300">{t('checkBackLater')}</p>
+                  <button 
+                    onClick={fetchPotentialMatches}
+                    className={`mt-4 px-6 py-2 rounded-full font-medium transition-colors ${
+                      isVip ? 'bg-amber-500 text-black hover:bg-amber-600' : 
+                      isPro ? 'bg-cyan-500 text-black hover:bg-cyan-600' : 
+                      'bg-pink-500 text-white hover:bg-pink-600'
+                    }`}
+                  >
+                    Load More Profiles
+                  </button>
+                </div>
+              )}
+
               {currentCardIndex >= potentialMatches.length && !isLoading && (
                 <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-6 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
                   <h2 className="text-2xl font-bold mb-2">{t('noMoreProfiles')}</h2>
                   <p className="text-gray-300">{t('checkBackLater')}</p>
+                  <button 
+                    onClick={fetchPotentialMatches}
+                    className={`mt-4 px-6 py-2 rounded-full font-medium transition-colors ${
+                      isVip ? 'bg-amber-500 text-black hover:bg-amber-600' : 
+                      isPro ? 'bg-cyan-500 text-black hover:bg-cyan-600' : 
+                      'bg-pink-500 text-white hover:bg-pink-600'
+                    }`}
+                  >
+                    Load More Profiles
+                  </button>
                 </div>
               )}
             </div>

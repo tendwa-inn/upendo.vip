@@ -3,6 +3,7 @@ import { Button } from '@tremor/react';
 import Portal from '../Portal';
 import { X, AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useAuthStore } from '../../stores/authStore';
 
 interface ReportUserModalProps {
   isOpen: boolean;
@@ -21,8 +22,12 @@ const reportReasonKeys = [
 
 const ReportUserModal: React.FC<ReportUserModalProps> = ({ isOpen, onClose, onSubmit }) => {
   const { t } = useTranslation();
+  const { profile } = useAuthStore();
   const [reason, setReason] = useState('');
   const [details, setDetails] = useState('');
+
+  const isVip = profile?.account_type === 'vip';
+  const isPro = profile?.account_type === 'pro';
 
   if (!isOpen) return null;
 
@@ -35,9 +40,11 @@ const ReportUserModal: React.FC<ReportUserModalProps> = ({ isOpen, onClose, onSu
   return (
     <Portal>
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-        <div className="bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] rounded-2xl w-full max-w-md p-6 text-white border border-pink-500/30 relative shadow-2xl">
+        <div className={`bg-gradient-to-br ${isVip ? 'from-black to-[#0b0b0b] border-amber-400/30' : isPro ? 'from-[#071521] to-[#0b2237] border-cyan-400/30' : 'from-[#1a0f14] to-[#2E0C13] border-pink-500/30'} rounded-2xl w-full max-w-md p-6 text-white border relative shadow-2xl`}>
           {/* Glow Effect */}
-          <div className="absolute inset-0 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
+          <div className={`absolute inset-0 rounded-2xl blur-xl ${
+            isVip ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : isPro ? 'bg-gradient-to-r from-cyan-400/10 to-blue-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10'
+          }`}></div>
 
           <div className="flex justify-between items-center mb-6 relative z-10">
             <div className="flex items-center space-x-3">
@@ -57,7 +64,9 @@ const ReportUserModal: React.FC<ReportUserModalProps> = ({ isOpen, onClose, onSu
               <select
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="w-full p-3 bg-white/5 rounded-md border border-white/10 focus:ring-2 focus:ring-pink-500 outline-none transition-all duration-300"
+                className={`w-full p-3 bg-white/5 rounded-md border border-white/10 focus:ring-2 outline-none transition-all duration-300 ${
+                  isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-500'
+                }`}
               >
                 <option value="" disabled>{t('report.selectReasonPlaceholder')}</option>
                 {reportReasonKeys.map(key => {
@@ -73,7 +82,9 @@ const ReportUserModal: React.FC<ReportUserModalProps> = ({ isOpen, onClose, onSu
                 value={details}
                 onChange={(e) => setDetails(e.target.value)}
                 placeholder={t('report.detailsPlaceholder')}
-                className="w-full p-3 bg-white/5 rounded-md border border-white/10 h-28 resize-none focus:ring-2 focus:ring-pink-500 outline-none transition-all duration-300"
+                className={`w-full p-3 bg-white/5 rounded-md border border-white/10 h-28 resize-none focus:ring-2 outline-none transition-all duration-300 ${
+                  isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-500'
+                }`}
               />
             </div>
           </div>

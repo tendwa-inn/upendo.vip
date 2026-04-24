@@ -6,7 +6,7 @@ import { useAuthStore } from '../../stores/authStore';
 
 const DeleteConfirmationModal = ({ onClose, onConfirm }) => {
   const { profile } = useAuthStore();
-  const acct = profile?.accountType || profile?.subscription;
+  const acct = profile?.account_type || profile?.subscription;
   const isVip = acct === 'vip';
   const isPro = acct === 'pro';
 

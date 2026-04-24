@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@tremor/react';
 import Portal from '../Portal';
-import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
+import { useAuthStore } from '../../stores/authStore';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -26,6 +26,10 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   type = 'danger',
   icon,
 }) => {
+  const { profile } = useAuthStore();
+  const isVip = profile?.account_type === 'vip';
+  const isPro = profile?.account_type === 'pro';
+
   if (!isOpen) return null;
 
   const iconColors = {
@@ -49,9 +53,9 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   return (
     <Portal>
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-in fade-in duration-200">
-        <div className="bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] p-6 rounded-2xl shadow-2xl z-50 text-white max-w-md w-full mx-4 border border-pink-500/30 relative">
+        <div className={`bg-gradient-to-br ${isVip ? 'from-black to-[#0b0b0b]' : isPro ? 'from-[#071521] to-[#0b2237]' : 'from-[#1a0f14] to-[#2E0C13]'} p-6 rounded-2xl shadow-2xl z-50 text-white max-w-md w-full mx-4 border ${isVip ? 'border-amber-400/30' : isPro ? 'border-cyan-400/30' : 'border-pink-500/30'} relative`}>
           {/* Glow Effect */}
-          <div className="absolute inset-0 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
+          <div className={`absolute inset-0 rounded-2xl blur-xl ${isVip ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : isPro ? 'bg-gradient-to-r from-cyan-400/10 to-blue-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10'}`}></div>
 
           {/* Close Button */}
           <button

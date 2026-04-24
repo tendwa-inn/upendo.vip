@@ -13,7 +13,7 @@ interface SystemConversationProps {
 
 const SystemConversation: React.FC<SystemConversationProps> = ({ message, onClose }) => {
   const systemProfile = {
-    accountType: 'pro',
+    account_type: 'pro',
   };
   const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
   const isVip = acct === 'vip';

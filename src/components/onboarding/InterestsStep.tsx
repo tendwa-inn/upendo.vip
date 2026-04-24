@@ -4,6 +4,7 @@ import { useOnboardingStore } from '../../stores/onboardingStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient'; // Import supabase
+import toast from 'react-hot-toast'; // Import toast
 
 const interestsList = [
   'Reading', 'Traveling', 'Movies', 'Music', 'Cooking', 'Dancing', 'Art', 'Photography',
@@ -28,38 +29,23 @@ const InterestsStep: React.FC = () => {
   };
 
   const handleNext = async () => {
-    const { user } = useAuthStore.getState();
-    if (!user) {
-      console.error("User not available");
-      return;
-    }
-
+    // Re-instating the secure RPC call to create the profile at the end of onboarding.
+    // This is the correct, stable architecture.
     const profileData = {
-      id: user.id, // This is the crucial part
       ...formData,
       interests: selectedInterests,
-      onboarding_completed: true,
     };
 
-    // Use upsert to avoid conflicts
-    const { error } = await supabase.from('profiles').upsert(profileData);
+    const { error } = await supabase.rpc('create_user_profile_onboarding', { data: profileData });
 
     if (error) {
-      console.error(error);
+      console.error("Failed to create profile:", error);
+      toast.error("There was an error creating your profile.");
     } else {
-      // Manually update the profile in the store after upserting
-      const { data: updatedProfile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (updatedProfile) {
-        useAuthStore.setState({ profile: updatedProfile });
-      }
-
+      // Manually trigger a profile refresh and complete onboarding.
+      // The RouteGuard will handle the navigation.
+      await useAuthStore.getState().checkUser();
       completeOnboarding();
-      navigate('/find', { replace: true });
     }
   };
 

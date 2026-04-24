@@ -9,6 +9,8 @@ import { useAuthStore } from '../../stores/authStore';
 import { useTranslation } from 'react-i18next';
 import usePresenceStore from '../../stores/presenceStore'; // Import presence store
 
+import { useLikeStore } from '../../stores/likeStore';
+
 interface SwipeCardProps {
   user: User;
   onSwipeLeft: (userId: string) => void;
@@ -17,8 +19,11 @@ interface SwipeCardProps {
   onBoost: () => void;
   isActive: boolean;
   canSwipe: boolean;
+  canRewind?: boolean;
   currentPhotoIndex: number;
   setCurrentPhotoIndex: React.Dispatch<React.SetStateAction<number>>;
+  currentCardIndex?: number;
+  swipeHistory?: string[];
 }
 
 const SwipeCard: React.FC<SwipeCardProps> = ({
@@ -29,8 +34,11 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   onBoost,
   isActive,
   canSwipe,
+  canRewind = false,
   currentPhotoIndex,
   setCurrentPhotoIndex,
+  currentCardIndex,
+  swipeHistory,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -38,7 +46,11 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const { buttonStyle, setButtonStyle } = useUiStore();
   const [isBioExpanded, setIsBioExpanded] = useState(false);
   const [showStyleMenu, setShowStyleMenu] = useState(false);
+  const [imageOrientation, setImageOrientation] = useState<'landscape' | 'portrait'>('portrait');
+  const [activeButton, setActiveButton] = useState<string | null>(null);
   const { t } = useTranslation();
+  const isVip = currentUser?.account_type === 'vip';
+  const isPro = currentUser?.account_type === 'pro';
 
   const calculateAge = (dob?: string | Date) => {
     if (!dob) return null;
@@ -57,7 +69,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
   const { onlineUsers } = usePresenceStore();
   const isOnline = !!onlineUsers[user.id];
-  const accountType = (user as any).accountType || (user as any).account_type;
+  const account_type = (user as any).accountType || (user as any).account_type;
 
   const dob =
     userAny.date_of_birth ||
@@ -101,7 +113,7 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
   const getPurposeColor = (purpose: string) => {
     switch (purpose) {
       case 'Serious Relationship':
-        return 'bg-blue-800 text-blue-200';
+        return 'bg-blue-800/40 text-blue-200';
       case 'Hookups':
       case 'Dating':
         return 'bg-red-800 text-red-200';
@@ -109,6 +121,15 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
         return 'bg-yellow-800 text-yellow-200';
       default:
         return 'bg-gray-700 text-white';
+    }
+  };
+
+  const handleImageLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth, naturalHeight } = event.currentTarget;
+    if (naturalWidth > naturalHeight) {
+      setImageOrientation('landscape');
+    } else {
+      setImageOrientation('portrait');
     }
   };
 
@@ -144,14 +165,36 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
     return heightValue;
   };
 
+  const { addLikedUser, likedUserIds } = useLikeStore();
+  const isLiked = likedUserIds.has(user.id);
+
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleLike = async () => {
+    if (isLiked || isProcessing) return;
+
+    setIsProcessing(true);
+    // Visual feedback
+    setActiveButton('like');
+    setTimeout(() => setActiveButton(null), 200);
+    
+    addLikedUser(user.id);
+    await onSwipeRight(user.id);
+
+    setIsProcessing(false);
+  };
+
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-300, 300], [-30, 30]);
   const opacity = useTransform(x, [-300, -150, 0, 150, 300], [0, 1, 1, 1, 0]);
 
   const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     if (Math.abs(info.offset.x) > 100) {
-      if (info.offset.x > 0) onSwipeRight(user.id);
-      else onSwipeLeft(user.id);
+      if (info.offset.x > 0) {
+        handleLike(); // Use handleLike to include the isLiked check
+      } else {
+        onSwipeLeft(user.id);
+      }
     }
   };
 
@@ -192,17 +235,21 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
 
     return (
       <div className="absolute bottom-12 right-4 flex flex-col items-center gap-6 z-40">
-        <button onClick={() => onSwipeRight(user.id)} className="flex flex-col items-center gap-1 font-bold text-[9px] text-white">
+        <button onClick={handleLike} className={`flex flex-col items-center gap-1 font-bold text-[9px] text-white disabled:opacity-50 transition-all duration-200 ${activeButton === 'like' ? 'scale-110' : ''}`}>
           {currentStyle.like}
           <span>{t('swipe.like')}</span>
         </button>
         
-        <button onClick={() => onSwipeLeft(user.id)} className="flex flex-col items-center gap-1 font-bold text-[9px] text-white">
+        <button onClick={() => { console.log('Nope button clicked for user:', user.id); setActiveButton('nope'); setTimeout(() => setActiveButton(null), 200); onSwipeLeft(user.id); }} className={`flex flex-col items-center gap-1 font-bold text-[9px] text-white transition-all duration-200 ${activeButton === 'nope' ? 'scale-110' : ''}`}>
           {currentStyle.nope}
           <span>{t('swipe.nope')}</span>
         </button>
 
-        <button onClick={onRewind} className="flex flex-col items-center gap-1 font-bold text-[9px] text-white">
+        <button 
+          onClick={() => { console.log('Rewind button clicked'); setActiveButton('rewind'); setTimeout(() => setActiveButton(null), 200); onRewind(); }} 
+          disabled={!canRewind}
+          className={`flex flex-col items-center gap-1 font-bold text-[9px] ${canRewind ? 'text-white' : 'text-gray-500'} disabled:opacity-50 transition-all duration-200 ${activeButton === 'rewind' ? 'scale-110' : ''}`}
+        >
           {currentStyle.rewind}
           <span>{t('swipe.rewind')}</span>
         </button>
@@ -215,13 +262,13 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
         {showStyleMenu && (
           <div className="absolute right-12 top-0 bg-gray-800 rounded-xl p-3 shadow-xl z-50 min-w-[140px]">
             <p className="text-xs text-gray-400 mb-2 font-semibold">{t('swipe.menu.buttonStyle')}</p>
-            <button onClick={() => { setButtonStyle('upendo-color'); setShowStyleMenu(false); }} className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'upendo-color' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+            <button onClick={() => { setButtonStyle('upendo-color'); setShowStyleMenu(false); }} className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'upendo-color' ? (isVip ? 'bg-amber-400 text-black' : isPro ? 'bg-cyan-400 text-white' : 'bg-pink-500 text-white') : 'text-gray-300 hover:bg-gray-700'}`}>
               {t('swipe.menu.upendoColor')}
             </button>
-            <button onClick={() => { setButtonStyle('white-clean'); setShowStyleMenu(false); }} className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'white-clean' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+            <button onClick={() => { setButtonStyle('white-clean'); setShowStyleMenu(false); }} className={`block w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${buttonStyle === 'white-clean' ? (isVip ? 'bg-amber-400 text-black' : isPro ? 'bg-cyan-400 text-white' : 'bg-pink-500 text-white') : 'text-gray-300 hover:bg-gray-700'}`}>
               {t('swipe.menu.whiteClean')}
             </button>
-            <button onClick={() => { setButtonStyle('vintage'); setShowStyleMenu(false); }} className={`block w-full text-left px-3 py-2 rounded-lg text-sm ${buttonStyle === 'vintage' ? 'bg-pink-500 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+            <button onClick={() => { setButtonStyle('vintage'); setShowStyleMenu(false); }} className={`block w-full text-left px-3 py-2 rounded-lg text-sm ${buttonStyle === 'vintage' ? (isVip ? 'bg-amber-400 text-black' : isPro ? 'bg-cyan-400 text-white' : 'bg-pink-500 text-white') : 'text-gray-300 hover:bg-gray-700'}`}>
               {t('swipe.menu.vintage')}
             </button>
           </div>
@@ -244,108 +291,124 @@ const SwipeCard: React.FC<SwipeCardProps> = ({
       exit={{ scale: 0.95, opacity: 0, transition: { duration: 0.2 } }}
       transition={{ type: 'spring', stiffness: 500, damping: 50 }}
     >
-      <div className="relative w-full h-full shadow-2xl overflow-hidden bg-gray-900 aspect-[9/16]">
-        {/* Photo Navigation */}
-        <div className="absolute top-0 left-0 right-0 bottom-32 z-10 flex h-auto">
-          <div className="w-1/2 h-full" onClick={prevPhoto} />
-          <div className="w-1/2 h-full" onClick={nextPhoto} />
+      {/* Debug Info */}
+      {import.meta.env.DEV && (
+        <div className="absolute top-4 left-4 bg-black/50 text-white text-xs p-2 rounded z-50">
+          <div>Card Index: {currentCardIndex ?? 'N/A'}</div>
+          <div>Swipe History: {swipeHistory?.length ?? 0}</div>
+          <div>Can Rewind: {canRewind ? 'Yes' : 'No'}</div>
+          <div>Active Button: {activeButton ?? 'None'}</div>
+        </div>
+      )}
+      <div className="relative w-full h-full shadow-2xl overflow-hidden bg-gray-900 aspect-[9/16] md:aspect-video md:rounded-2xl md:h-auto md:flex md:justify-center md:items-center">
+        <div className="relative w-full h-full md:w-auto md:h-full">
+            {/* Photo Navigation */}
+            <div className="absolute top-0 left-0 right-0 bottom-32 z-10 flex h-auto">
+              <div className="w-1/2 h-full" onClick={prevPhoto} />
+              <div className="w-1/2 h-full" onClick={nextPhoto} />
+            </div>
+
+            <motion.img
+              key={currentPhotoIndex}
+              src={(user.photos && user.photos[currentPhotoIndex]) || 'https://placehold.co/600x800'}
+              alt={user.name || 'User'}
+              onLoad={handleImageLoad}
+              className={`w-full h-full object-cover ${
+                imageOrientation === 'landscape' ? 'md:object-cover' : 'md:object-contain'
+              } md:w-auto md:h-full`}
+              initial={{ opacity: 0.8 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3 }}
+            />
         </div>
 
-        <motion.img
-          key={currentPhotoIndex}
-          src={(user.photos && user.photos[currentPhotoIndex]) || 'https://placehold.co/600x800'}
-          alt={user.name || 'User'}
-          className="w-full h-full object-contain"
-          initial={{ opacity: 0.8 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-        />
-        <div className="absolute bottom-0 left-0 right-0 h-3/4 bg-gradient-to-t from-black/80 to-transparent" />
+        {/* Overlays are now siblings to the image container */}
+        <div className="absolute bottom-0 left-0 right-0 h-3/4 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
 
         {renderButtons()}
 
-        <div className="absolute bottom-4 left-0 right-0 p-5 pr-24 text-white z-10">
-          <div className="mb-2">
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold cursor-pointer" onClick={() => navigate(`/user/${user.id}`)}>
-                 {user.name}{displayAge !== null && displayAge !== undefined ? `, ${displayAge}` : ''}
-              </h2>
-              {isOnline && (!accountType || accountType === 'free') && (
-                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-              )}
-              <VerificationBadge profile={user} />
-            </div>
+        <div className="absolute bottom-4 left-0 right-0 p-5 pr-24 text-white z-10 pointer-events-none">
+          {/* The content of the user info overlay */}
+          <div className="mb-2 pointer-events-auto">
+              <div className="flex items-center gap-2">
+                <h2 className="text-2xl font-bold cursor-pointer" onClick={() => navigate(`/user/${user.id}`)}>
+                    {user.name}{displayAge !== null && displayAge !== undefined ? ` ${displayAge}` : ''}
+                  </h2>
+                  <VerificationBadge profile={user} />
+                {isOnline && (!account_type || account_type === 'free') && (
+                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+                )}
+                <VerificationBadge profile={user} />
+              </div>
 
-            <div className="flex items-center gap-2 mt-1">
-              {distance && (
-                <div className="flex items-center gap-1.5 text-white/80 text-sm">
-                  <MapPin size={14} />
-                  <span>{distance}</span>
+              <div className="flex items-center gap-2 mt-1">
+                {distance && (
+                  <div className="flex items-center gap-1.5 text-white/80 text-sm">
+                    <MapPin size={14} />
+                    <span>{distance}</span>
+                  </div>
+                )}
+                
+                {userHereFor.length > 0 ? (
+                  userHereFor.map((purpose: string) => (
+                    <span key={purpose} className={`px-3 py-1 rounded-full text-sm ${getPurposeColor(purpose)}`}>{purpose}</span>
+                  ))
+                ) : (
+                  <span className="px-3 py-1 rounded-full text-sm bg-gray-600 text-gray-300">Not specified</span>
+                )}
+              </div>
+
+              {user.bio && (
+                <div className="text-gray-300 mt-1">
+                  <p className={`text-white text-base ${!isBioExpanded && 'line-clamp-2'}`}>{user.bio}</p>
+                  {user.bio.length > 100 && (
+                    <button onClick={() => setIsBioExpanded(!isBioExpanded)} className="text-gray-400 text-sm font-semibold mt-1 hover:underline">
+                      {isBioExpanded ? t('swipe.bio.seeLess') : t('swipe.bio.seeMore')}
+                    </button>
+                  )}
                 </div>
               )}
               
-              {/* Show viewed user's purposes */}
-              {userHereFor.length > 0 ? (
-                userHereFor.map((purpose: string) => (
-                  <span key={purpose} className={`px-3 py-1 rounded-full text-sm ${getPurposeColor(purpose)}`}>{purpose}</span>
-                ))
-              ) : (
-                <span className="px-3 py-1 rounded-full text-sm bg-gray-600 text-gray-300">Not specified</span>
-              )}
-            </div>
-
-            {user.bio && (
-              <div className="text-gray-300 mt-1">
-                <p className={`text-white text-base ${!isBioExpanded && 'line-clamp-2'}`}>{user.bio}</p>
-                {user.bio.length > 100 && (
-                  <button onClick={() => setIsBioExpanded(!isBioExpanded)} className="text-gray-400 text-sm font-semibold mt-1 hover:underline">
-                    {isBioExpanded ? t('swipe.bio.seeLess') : t('swipe.bio.seeMore')}
-                  </button>
-                )}
-              </div>
-            )}
-            
-            {/* Badges row */}
-            {((user as any).accountType === 'pro' || (user as any).accountType === 'vip' || (user as any).account_type === 'pro' || (user as any).account_type === 'vip') && (
-              <div className="flex items-center mt-2">
-                <div className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium ${
-                  ((user as any).accountType || (user as any).account_type) === 'pro' 
-                    ? 'bg-white/20 text-white' 
-                    : 'bg-black text-white'
-                }`}>
-                  {((user as any).accountType || (user as any).account_type) === 'vip' ? (
-                    <Crown className="w-3.5 h-3.5" />
-                  ) : (
-                    <Shield className="w-3.5 h-3.5" />
-                  )}
-                  <span>{((user as any).accountType || (user as any).account_type).toLowerCase()}</span>
+              {((user as any).accountType === 'pro' || (user as any).accountType === 'vip' || (user as any).account_type === 'pro' || (user as any).account_type === 'vip') && (
+                <div className="flex items-center mt-2">
+                  <div className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+                    ((user as any).accountType || (user as any).account_type) === 'pro' 
+                      ? 'bg-white/20 text-white' 
+                      : 'bg-black text-white'
+                  }`}>
+                    {((user as any).accountType || (user as any).account_type) === 'vip' ? (
+                      <Crown className="w-3.5 h-3.5" />
+                    ) : (
+                      <Shield className="w-3.5 h-3.5" />
+                    )}
+                    <span>{((user as any).accountType || (user as any).account_type).toLowerCase()}</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="flex flex-wrap gap-2 mt-4">
-              {(user as any).kids && (
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300">{(user as any).kids}</span>
-              )}
-              {(user as any).occupation && (
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-300">{(user as any).occupation}</span>
-              )}
-              {user.religion && (
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300">{user.religion}</span>
-              )}
-              {user.firstDate && (
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-300">{user.firstDate}</span>
-              )}
-              {user.height && (
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-300">{formatHeight(user.height)}</span>
-              )}
-              {mutualInterests.slice(0, 2).map(interest => (
-                <span key={interest} className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-800 text-green-200">{interest}</span>
-              ))}
+              <div className="flex flex-wrap gap-2 mt-4">
+                {(user as any).kids && (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300">{(user as any).kids}</span>
+                )}
+                {(user as any).occupation && (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-300">{(user as any).occupation}</span>
+                )}
+                {user.religion && (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300">{user.religion}</span>
+                )}
+                {user.firstDate && (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-300">{user.firstDate}</span>
+                )}
+                {user.height && (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-300">{formatHeight(user.height)}</span>
+                )}
+                {mutualInterests.slice(0, 2).map(interest => (
+                  <span key={interest} className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-800 text-green-200">{interest}</span>
+                ))}
+              </div>
             </div>
-          </div>
         </div>
-      </div>
+        </div>
     </motion.div>
   );
 };

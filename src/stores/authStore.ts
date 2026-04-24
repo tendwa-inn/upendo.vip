@@ -2,9 +2,10 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
-import { Session, User as SupabaseUser, createClient } from '@supabase/supabase-js';
+import { Session, User as SupabaseUser, RealtimeChannel } from '@supabase/supabase-js';
 import { User } from '../types';
 import { wordFilterService } from '../services/wordFilterService';
+import { recordUserActivity } from '../services/popularityService';
 
 interface AuthState {
   session: Session | null;
@@ -13,8 +14,11 @@ interface AuthState {
   isAdmin: boolean;
   loading: boolean;
   isSuspended: boolean;
+  isPro: boolean;
+  isVip: boolean;
   messageRequestsSent: number;
   messageRequestResetDate: Date | null;
+  channel: RealtimeChannel | null;
   setSession: (session: Session | null) => void;
   setProfile: (profile: User | null) => void;
   checkUser: () => Promise<void>;
@@ -34,8 +38,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAdmin: false,
   loading: true,
   isSuspended: false,
+  isPro: false,
+  isVip: false,
   messageRequestsSent: 0,
   messageRequestResetDate: null,
+  channel: null,
   setSession: (session) => set({ session, user: session?.user ?? null }),
   setProfile: (profile) => set({ profile }),
 
@@ -52,6 +59,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     
     try {
       if (freshSession?.user) {
+        // Also record user activity for popularity score
+        recordUserActivity(freshSession.user.id);
         const { data: profiles, error: profileError } = await supabase
           .from('profiles')
           .select('*')
@@ -64,16 +73,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         const profile = profiles && profiles.length > 0 ? profiles[0] : null;
+        console.log('[DEBUG] Raw profile keys from authStore:', profile ? Object.keys(profile) : 'No profile found');
 
         if (!profile) {
           set({ profile: null });
           return; 
         }
 
-        const processedProfile: User = { ...profile } as User;
+        const processedProfile: User = { 
+          ...profile,
+          lastActive: profile.last_active_at || profile.lastActive,
+          account_type: profile.account_type || profile.subscription,
+        } as User;
 
-        if ((processedProfile as any).is_banned) {
-          toast.error('Your account has been banned due to a policy violation.');
+        if (profile.strikes >= 3) {
+          toast.error('Your account has been banned.');
           get().signOut();
           return;
         }
@@ -106,13 +120,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           processedProfile.dateOfBirth = new Date((processedProfile as any).dob);
         }
 
+        const isVip = (processedProfile as any).account_type === 'vip';
+        const isPro = (processedProfile as any).account_type === 'pro';
+
+        // Debugging authStore profile values
+        console.log('AUTHSTORE DEBUG: processedProfile', processedProfile);
+        console.log('AUTHSTORE DEBUG: processedProfile.account_type', (processedProfile as any).account_type);
+        console.log('AUTHSTORE DEBUG: isVip', isVip);
+        console.log('AUTHSTORE DEBUG: isPro', isPro);
+
         set({ 
           profile: processedProfile, 
           isAdmin: (processedProfile as any).role === 'admin',
           isSuspended: false,
+          isPro,
+          isVip,
           messageRequestsSent: (processedProfile as any).message_requests_sent || 0,
           messageRequestResetDate: (processedProfile as any).message_request_reset_date ? new Date((processedProfile as any).message_request_reset_date) : null
         });
+
+        // Set up a real-time listener for the user's profile, if one doesn't exist
+        if (!get().channel) {
+          const channel = supabase.channel(`profile:${processedProfile.id}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${processedProfile.id}` }, payload => {
+              console.log('Profile change detected, refetching profile...', payload);
+              get().checkUser();
+            })
+            .subscribe();
+          set({ channel });
+        }
+
       } else {
         set({ profile: null, isAdmin: false });
       }
@@ -147,29 +184,52 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
+    const { channel } = get();
+    if (channel) {
+      await channel.unsubscribe();
+    }
     const { error } = await supabase.auth.signOut();
     if (error) {
       toast.error("Logout failed. Please try again.");
     } else {
-      set({ session: null, user: null, profile: null, isAdmin: false });
+      set({ session: null, user: null, profile: null, isAdmin: false, channel: null });
     }
   },
 
   updateUserProfile: async (updateData: any, onSuccess?: () => void) => {
-    const { user } = get();
-    if (!user) return toast.error("You must be logged in to update your profile.");
+    const { user, profile } = get();
+    if (!user || !profile) return toast.error("You must be logged in to update your profile.");
+
+    const processedUpdateData = { ...updateData };
+    if (updateData.location && typeof updateData.location === 'object' && updateData.location.name && updateData.location.longitude && updateData.location.latitude) {
+      processedUpdateData.location = `POINT(${updateData.location.longitude} ${updateData.location.latitude})`;
+      processedUpdateData.location_name = updateData.location.name;
+    }
+    if (updateData.firstDate && typeof updateData.firstDate === 'object') {
+      processedUpdateData.firstDate = updateData.firstDate.value;
+    }
+    if (updateData.loveLanguage && typeof updateData.loveLanguage === 'object') {
+      processedUpdateData.loveLanguage = updateData.loveLanguage.value;
+    }
 
     const { error } = await supabase
       .from('profiles')
-      .update({ ...updateData })
+      .update({ ...processedUpdateData })
       .eq('id', user.id);
 
     if (error) {
       toast.error(error.message);
     } else {
+      // Optimistically update the local state
+      const newProfile = { ...profile, ...processedUpdateData };
+      set({
+        profile: newProfile,
+        isPro: newProfile.account_type === 'pro',
+        isVip: newProfile.account_type === 'vip',
+      });
+
       if (onSuccess) await onSuccess();
       else toast.success("Profile updated!");
-      await get().checkUser();
     }
   },
 
@@ -185,22 +245,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   applyPromoCode: async (promoCode: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (!user) {
-      return toast.error("Authentication error. Please log in again.");
+    if (!session || !session.user) {
+      return toast.error("You must be logged in to apply a promo code.");
     }
+    const user = session.user;
 
     try {
-      // 1. Find the active promo code by its text code
+      const normalizedCode = promoCode.trim().toUpperCase();
+
       const { data: promoData, error: promoError } = await supabase
         .from('promo_codes')
-        .select('id, name, duration_days')
-        .eq('code', promoCode)
-        .single();
+        .select('*')
+        .eq('code', normalizedCode)
+        .maybeSingle();
 
       if (promoError || !promoData) {
-        return toast.error('This promo code is invalid or has expired.');
+        return toast.error('Invalid or expired promo code');
       }
 
       // 2. Calculate the expiration date for the user's redemption
@@ -208,14 +270,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ? new Date(Date.now() + promoData.duration_days * 24 * 60 * 60 * 1000).toISOString()
         : null;
 
-      // 3. Insert the redemption record. RLS policy will automatically check for uniqueness.
-      const { error: insertError } = await supabase
-        .from('user_promos')
-        .insert([{
-          user_id: user.id,          // This must match auth.uid() for RLS
-          promo_code_id: promoData.id,
-          expires_at: expires_at
-        }]);
+      // DEBUG: Log the session to ensure it's not null
+      console.log("SESSION BEFORE INSERT:", session);
+
+      // 3. Call the secure RPC function to redeem the promo code.
+      const { error: insertError } = await supabase.rpc('redeem_promo', { 
+        promo_id: promoData.id, 
+        expiry: expires_at 
+      });
 
       if (insertError) {
         // The unique constraint will throw an error if the user has already redeemed it

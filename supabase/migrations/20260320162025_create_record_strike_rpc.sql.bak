@@ -1,0 +1,27 @@
+CREATE OR REPLACE FUNCTION public.record_strike_and_notify(
+  p_user_id UUID,
+  p_word TEXT
+)
+RETURNS VOID AS $$
+DECLARE
+    current_strikes INTEGER;
+    new_strikes INTEGER;
+    notification_message TEXT;
+BEGIN
+    -- Get current strikes and increment
+    SELECT strikes INTO current_strikes FROM public.profiles WHERE id = p_user_id;
+    new_strikes := COALESCE(current_strikes, 0) + 1;
+
+    UPDATE public.profiles SET strikes = new_strikes WHERE id = p_user_id;
+
+    -- Create and send notification
+    notification_message := 'You have received a strike for using inappropriate language ("' || p_word || '"). You now have ' || new_strikes || ' strike(s).';
+    INSERT INTO public.notifications (user_id, type, message) VALUES (p_user_id, 'system', notification_message);
+
+    -- Check for automatic ban
+    IF new_strikes >= 3 THEN
+        INSERT INTO public.user_actions (user_id, action_type, reason, status) 
+        VALUES (p_user_id, 'ban', 'Automatic ban due to accumulating 3 strikes.', 'active');
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

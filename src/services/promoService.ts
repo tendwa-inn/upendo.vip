@@ -12,8 +12,12 @@ export const promoService = {
     if (promo.type) dbPromo.type = promo.type;
     if (promo.durationDays !== undefined && promo.durationDays !== null) dbPromo.duration_days = promo.durationDays;
     if (promo.maxUses !== undefined && promo.maxUses !== null) dbPromo.max_uses = promo.maxUses;
-    if (promo.effect) dbPromo.effect = promo.effect;
-    if (promo.expiresAt) dbPromo.expires_at = promo.expiresAt;
+    // effect field is not in current table schema, so don't map it
+    // if (promo.effect) dbPromo.effect = promo.effect;
+    // expires_at field - auto-calculate from durationDays if provided
+    if (promo.durationDays !== undefined && promo.durationDays !== null) {
+      dbPromo.expires_at = new Date(Date.now() + promo.durationDays * 24 * 60 * 60 * 1000).toISOString();
+    }
     return dbPromo;
   },
 
@@ -30,12 +34,15 @@ export const promoService = {
       timesUsed: dbPromo.times_used || 0,
       createdAt: new Date(dbPromo.created_at),
       expiresAt: dbPromo.expires_at ? new Date(dbPromo.expires_at) : undefined,
-      effect: dbPromo.effect || {},
+      // effect field is not in current table schema
+      // effect: dbPromo.effect || {},
+      effect: {}, // Default empty object since effect column doesn't exist
+      isArchived: dbPromo.is_archived || false,
     };
   },
 
   // Fetch all promo codes
-  async getPromoCodes(): Promise<{ active: PromoCode[], expired: PromoCode[] }> {
+  async getPromoCodes(): Promise<{ active: PromoCode[], expired: PromoCode[], archived: PromoCode[] }> {
     const { data: promos, error: promosError } = await supabase
       .from('promo_codes')
       .select('*');
@@ -54,21 +61,26 @@ export const promoService = {
     const now = new Date();
     const active: PromoCode[] = [];
     const expired: PromoCode[] = [];
+    const archived: PromoCode[] = [];
 
     promos.forEach(code => {
       const timesUsed = usageMap.get(code.id) || 0;
-      const isExpired = new Date(code.expires_at) < now || (code.max_uses !== null && timesUsed >= code.max_uses);
+      const isExpired = 
+        (code.expires_at && new Date(code.expires_at) < now) || 
+        (code.max_uses !== null && timesUsed >= code.max_uses);
       const promo = promoService.mapFromDbFormat(code);
       promo.timesUsed = timesUsed;
 
-      if (isExpired) {
+      if (code.is_archived) {
+        archived.push(promo);
+      } else if (isExpired) {
         expired.push(promo);
       } else {
         active.push(promo);
       }
     });
 
-    return { active, expired };
+    return { active, expired, archived };
   },
 
   // Create a new promo code
@@ -84,7 +96,55 @@ export const promoService = {
     return promoService.mapFromDbFormat(data);
   },
 
-  // Delete a promo code and revert users
+  // Archive a promo code (soft delete)
+  async archivePromoCode(promoId: string): Promise<void> {
+    // Get the current session to ensure we are authenticated as an admin
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+
+    const numericPromoId = Number(promoId);
+
+    // Archive the promo code (soft delete)
+    const { error: archiveError } = await supabase
+      .from('promo_codes')
+      .update({ is_archived: true })
+      .eq('id', numericPromoId);
+
+    if (archiveError) throw archiveError;
+  },
+
+  // Apply a promo code for a user
+  async applyPromoCode(userId: string, promoCodeId: number, expiresAt: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+
+    const supabaseAuthed = createClient(supabase.supabaseUrl, supabase.supabaseKey, {
+      global: { headers: { Authorization: `Bearer ${session.access_token}` } },
+    });
+
+    const { error } = await supabaseAuthed.from('user_promos').insert({
+      user_id: userId,
+      promo_code_id: promoCodeId,
+      expires_at: expiresAt,
+    });
+
+    if (error) throw error;
+  },
+
+  // Cancel a promo for a user
+  async cancelPromo(promoId: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not authenticated');
+
+    const supabaseAuthed = createClient(supabase.supabaseUrl, supabase.supabaseKey, {
+      global: { headers: { Authorization: `Bearer ${session.access_token}` } },
+    });
+
+    const { error } = await supabaseAuthed.from('user_promos').delete().eq('id', promoId);
+    if (error) throw error;
+  },
+
+  // Delete a promo code and revert users (DESTRUCTIVE - use with caution)
   async deletePromoCode(promoId: string): Promise<void> {
     // Get the current session to ensure we are authenticated as an admin
     const { data: { session } } = await supabase.auth.getSession();

@@ -15,14 +15,13 @@ const africanTribes = [
 ].sort();
 
 const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, onApply }) => {
-  const { profile } = useAuthStore();
+  const { profile, isPro, isVip } = useAuthStore();
   const { t } = useTranslation();
   const [ageRange, setAgeRange] = useState([22, 37]);
   const [distance, setDistance] = useState(50);
   const [tribe, setTribe] = useState('');
 
-  const isVip = profile?.accountType === 'vip' || (profile as any)?.subscription === 'vip';
-  const isPro = profile?.accountType === 'pro' || (profile as any)?.subscription === 'pro';
+
 
   if (!isOpen) return null;
 
@@ -89,7 +88,9 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, onApply }) =
               className={`px-8 py-2 rounded-full font-bold transition-all duration-300 hover:scale-105 ${
                 isVip 
                   ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/30 hover:bg-amber-500' 
-                  : (profile?.accountType === 'pro' ? 'bg-[#ff7f50] text-black shadow-lg shadow-orange-400/30 hover:bg-[#ff5e57]' : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-lg shadow-pink-500/20 hover:from-pink-700 hover:to-pink-600')
+                  : isPro 
+                    ? 'bg-[#ff7f50] text-black shadow-lg shadow-orange-400/30 hover:bg-[#ff5e57]' 
+                    : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-lg shadow-pink-500/20 hover:from-pink-700 hover:to-pink-600'
               }`}
             >{t('filters.apply')}</button>
           </div>
