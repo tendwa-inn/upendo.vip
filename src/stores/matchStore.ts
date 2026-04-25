@@ -37,6 +37,7 @@ interface MatchState {
   setTyping: (matchId: string, userId: string, isTyping: boolean) => void;
   subscribeToProfileChanges: () => any; // Return type is Supabase channel
   unsubscribeFromProfileChanges: () => void;
+  listenForStrikes: () => () => void;
 }
 
 export const useMatchStore = create<MatchState>((set, get) => ({
@@ -321,5 +322,24 @@ export const useMatchStore = create<MatchState>((set, get) => ({
         ? { ...state.selectedMatch, messages: state.selectedMatch.messages.filter(m => m.id !== messageId) }
         : state.selectedMatch,
     }));
+  },
+
+  listenForStrikes: () => {
+    const channel = supabase
+      .channel('match-strikes-listener')
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'matches' },
+        (payload) => {
+          console.log('Match deleted (likely due to strike), refreshing matches...', payload);
+          // Refetch matches to remove users who were unmatched due to strikes
+          get().fetchMatches();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   },
 }));

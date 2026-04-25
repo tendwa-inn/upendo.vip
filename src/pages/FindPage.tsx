@@ -31,6 +31,7 @@ const FindPage: React.FC = () => {
   const { unreadCount, fetchNotifications } = useNotificationStore();
   const { createMatch, matches } = useMatchStore();
   const { usersWhoLikedMe, fetchUsersWhoLikedMe, removeLike, hasNewLikes, markLikesAsViewed, listenForNewLikes, fetchLikedUserIds } = useLikesStore();
+  const { listenForStrikes } = useDiscoveryStore();
   const { usersWhoViewedMe, fetchUsersWhoViewedMe, hasNewViews, markViewsAsViewed } = useViewsStore();
   const { onlineUsers } = usePresenceStore();
   const [isLoading, setIsLoading] = useState(true);
@@ -237,10 +238,14 @@ const FindPage: React.FC = () => {
 
     // Set up the real-time listener for new likes
     const unsubscribe = listenForNewLikes();
+    
+    // Set up the real-time listener for strikes to refresh like lists
+    const unsubscribeStrikes = listenForStrikes();
 
-    // Clean up the listener when the component unmounts
+    // Clean up the listeners when the component unmounts
     return () => {
       unsubscribe();
+      unsubscribeStrikes();
     };
   }, [fetchPotentialMatches, fetchUsersWhoLikedMe, fetchUsersWhoViewedMe, fetchNotifications, loadSwipeState, listenForNewLikes]);
 

@@ -119,6 +119,20 @@ export const useLikesStore = create<LikesState>((set, get) => ({
           set({ hasNewLikes: true });
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `type=eq.system` },
+        (payload) => {
+          console.log('System notification received!', payload);
+          // Check if this is a strike notification by looking for keywords in the message
+          const message = payload.new.message as string;
+          if (message && (message.includes('strike') || message.includes('flagged'))) {
+            console.log('Strike notification detected, refreshing like lists...');
+            // Refetch users who liked me to remove users who were unmatched due to strikes
+            get().fetchUsersWhoLikedMe();
+          }
+        }
+      )
       .subscribe();
 
     return () => {

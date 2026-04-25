@@ -178,7 +178,8 @@ const ProfilePage: React.FC = () => {
         const data = await response.json();
         
         if (data && data.address) {
-          const locationName = `${data.address.city || data.address.town || ''}, ${data.address.country}`;
+          const city = data.address.city || data.address.town || '';
+        const locationName = city ? `${city}, ${data.address.country}` : data.address.country;
           const locationData = {
             name: locationName,
             longitude,

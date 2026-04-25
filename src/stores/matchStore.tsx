@@ -21,6 +21,7 @@ interface MatchState {
   createMatch: (matchedUserId: string) => Promise<void>;
   setTyping: (matchId: string, userId: string, isTyping: boolean) => void;
   markMatchesAsViewed: () => void;
+  listenForStrikes: () => () => void;
 }
 
 export const useMatchStore = create<MatchState>((set, get) => ({
@@ -297,10 +298,20 @@ export const useMatchStore = create<MatchState>((set, get) => ({
 
     if (existingMatches && existingMatches.length > 0) {
       console.log("Match already exists:", existingMatches[0].id);
-      // A match already exists, so we don't create a new one.
-      // We can optionally fetch and select it.
-      get().fetchMatches(); // Refresh state to ensure it's up to date
-      return; // Stop execution
+      const { data: fullMatch, error: fetchError } = await supabase
+        .from('matches')
+        .select('*, user1:profiles!user1_id(*), user2:profiles!user2_id(*), messages(*)')
+        .eq('id', existingMatches[0].id)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching existing match:', fetchError);
+        return null;
+      }
+      
+      get().fetchMatches();
+      
+      return fullMatch;
     }
 
     if (existingMatchError) {
@@ -357,5 +368,23 @@ export const useMatchStore = create<MatchState>((set, get) => ({
         }
       };
     });
+  },
+
+  listenForStrikes: () => {
+    const channel = supabase
+      .channel('match-strikes-listener')
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'matches' },
+        (payload) => {
+          console.log('Match deleted (likely due to strike), refreshing matches...', payload);
+          get().fetchMatches();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   },
 }));

@@ -8,6 +8,7 @@ interface DiscoveryState {
   fetchPotentialMatches: () => Promise<void>;
   removePotentialMatch: (userId: string) => void;
   reset: () => void;
+  listenForStrikes: () => () => void;
 }
 
 const calculateAge = (dob?: string | Date) => {
@@ -103,6 +104,30 @@ export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
     set(state => ({
       potentialMatches: state.potentialMatches.filter(match => match.id !== userId),
     }));
+  },
+
+  listenForStrikes: () => {
+    const channel = supabase
+      .channel('strikes-listener')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `type=eq.system` },
+        (payload) => {
+          console.log('System notification received in discovery store!', payload);
+          // Check if this is a strike notification by looking for keywords in the message
+          const message = payload.new.message as string;
+          if (message && (message.includes('strike') || message.includes('flagged'))) {
+            console.log('Strike notification detected in discovery store, refreshing potential matches...');
+            // Refetch potential matches to remove users who were unmatched due to strikes
+            get().fetchPotentialMatches();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   },
 }));
 

@@ -4,8 +4,9 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { useMatchStore } from '../stores/matchStore.tsx';
 import { useLikesStore } from '../stores/likesStore';
+import { useDiscoveryStore } from '../stores/discoveryStore';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, Check, X, Crown, Shield, FileImage } from 'lucide-react';
+import { Search, SlidersHorizontal, Check, X, Crown, Shield, FileImage, Heart } from 'lucide-react';
 import { Match, User } from '../types';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
@@ -36,10 +37,12 @@ const ChatPage: React.FC = () => {
     }
   }, [user, fetchMatches]);
 
-  const handleLikeBack = async (userId: string) => {
+
+
+  const handleOpenOrCreateMatch = async (userId: string) => {
     const newMatch = await createMatch(userId);
     if (newMatch) {
-      removeLike(userId); // This will optimistically remove the user from the UI
+      removeLike(userId);
       toast.success('You matched!');
       navigate(`/chat/${newMatch.id}`);
     } else {
@@ -132,7 +135,15 @@ const ChatPage: React.FC = () => {
                 {filteredNewMatches.map((match) => {
                   const otherUser = match.user1.id === user?.id ? match.user2 : match.user1;
                   return (
-                    <button onClick={() => handleLikeBack(otherUser.id)} className="bg-pink-500 text-white px-3 py-1 rounded-full text-xs">Like Back</button>
+                    <div key={match.id} className="flex flex-col items-center space-y-2 text-center">
+                      <button onClick={() => handleOpenOrCreateMatch(otherUser.id)} className="relative block group">
+                        <SafeImage src={otherUser.photos?.[0] || '/placeholder-avatar.png'} alt={otherUser.name} className="w-16 h-16 rounded-full object-cover transition-transform group-hover:scale-105" />
+                        <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Heart className="w-6 h-6 text-white" />
+                        </div>
+                      </button>
+                      <p className="text-xs w-16 truncate">{otherUser.name}</p>
+                    </div>
                   );
                 })}
               </div>
