@@ -14,14 +14,14 @@ interface ChatSettingsModalProps {
 const ChatSettingsModal: React.FC<ChatSettingsModalProps> = ({ isOpen, onClose }) => {
   const { user, profile, updateUserProfile } = useAuthStore();
   const { isAutoUnmatchEnabled, toggleAutoUnmatch, isReadReceiptsEnabled, toggleReadReceipts } = useSettingsStore();
-  const [isGhostMode, setGhostMode] = React.useState(profile?.ghostModeEnabled || false);
+  const [isGhostMode, setGhostMode] = React.useState(profile?.ghost_mode_enabled || false);
   const { t } = useTranslation();
 
   const toggleGhostMode = async () => {
     if (!user) return;
     const newStatus = !isGhostMode;
     setGhostMode(newStatus);
-    await updateUserProfile({ ghostModeEnabled: newStatus });
+    await updateUserProfile({ ghost_mode_enabled: newStatus });
   };
 
   const isPremium = profile?.account_type === 'pro' || profile?.account_type === 'vip';

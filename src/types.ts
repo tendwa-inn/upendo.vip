@@ -34,7 +34,7 @@ export interface User {
   role?: string;
   account_type?: 'free' | 'pro' | 'vip';
   subscriptionTier?: string;
-  ghostModeEnabled?: boolean;
+  ghost_mode_enabled?: boolean;
   relationshipIntent?: string;
   viewed_at?: string; // For profile views
   liked_at?: string; // For likes
