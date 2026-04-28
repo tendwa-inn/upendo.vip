@@ -1,0 +1,11 @@
+CREATE OR REPLACE FUNCTION public.unmatch_user(
+    user_id1 UUID,
+    user_id2 UUID
+)
+RETURNS VOID AS $$
+BEGIN
+    DELETE FROM public.matches
+    WHERE (user1_id = user_id1 AND user2_id = user_id2)
+       OR (user1_id = user_id2 AND user2_id = user_id1);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
