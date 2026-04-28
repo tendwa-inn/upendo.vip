@@ -149,12 +149,6 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-[#22090E] to-[#2E0C13] relative overflow-hidden">
-      {/* SEO Content for Google Crawler */}
-      <div className="absolute top-4 left-4 text-white z-10">
-        <h1 className="text-2xl font-bold">Upendo</h1>
-        <p className="text-pink-300">Upendo is the no-ghost dating app</p>
-      </div>
-      
       <SplashScreen visible={showSplash} />
       
       {showInstallButton && !showSplash && (
