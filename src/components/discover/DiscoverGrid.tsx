@@ -48,7 +48,7 @@ const DiscoverGrid: React.FC = () => {
   const seededIndex = (key: string, modulo: number) => hashString(`${todaySeed()}|${key}`) % modulo;
   const assignedVibeForId = (id: string) => VIBES[seededIndex(id, VIBES.length)];
   const effectiveVibeForUser = (u: any) => {
-    const expiresAt = u?.daily_vibe_expires_at || u?.dailyVibeExpiresAt;
+    const expiresAt = u?.daily_vibe_expires_at;
     const value = u?.daily_vibe || u?.dailyVibe;
     const now = Date.now();
     if (value && expiresAt && new Date(expiresAt).getTime() > now) return value;
@@ -69,7 +69,7 @@ const DiscoverGrid: React.FC = () => {
     // Prefer persisted profile vibe if present and valid
     const now = Date.now();
     const persistedValue = (profile as any)?.dailyVibe;
-    const persistedExpires = (profile as any)?.dailyVibeExpiresAt;
+    const persistedExpires = (profile as any)?.daily_vibe_expires_at;
     if (persistedValue && persistedExpires && new Date(persistedExpires).getTime() > now) {
       setSelectedVibe(!isPremium && !FREE_VIBES.includes(persistedValue) ? 'Normal' : persistedValue);
       return;
@@ -91,7 +91,7 @@ const DiscoverGrid: React.FC = () => {
     // Default
     setSelectedVibe('Normal');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id, isPremium, (profile as any)?.dailyVibe, (profile as any)?.dailyVibeExpiresAt]);
+  }, [currentUser?.id, isPremium, (profile as any)?.dailyVibe, (profile as any)?.daily_vibe_expires_at]);
 
   const setVibeForToday = async (v: string) => {
     const key = 'dailyVibe';
@@ -125,7 +125,7 @@ const DiscoverGrid: React.FC = () => {
         setSelectedVibe(v);
         // Persist to Supabase so others see it
         const expiresIso = new Date(expiresAt).toISOString();
-        await useAuthStore.getState().updateUserProfile({ dailyVibe: v, dailyVibeExpiresAt: expiresIso });
+        await useAuthStore.getState().updateUserProfile({ dailyVibe: v, daily_vibe_expires_at: expiresIso });
         return;
       } catch {}
     }
@@ -136,7 +136,7 @@ const DiscoverGrid: React.FC = () => {
     setSelectedVibe(v);
     // Persist to Supabase
     const expiresIso = new Date(now + DAILY_MS).toISOString();
-    await useAuthStore.getState().updateUserProfile({ dailyVibe: v, dailyVibeExpiresAt: expiresIso });
+    await useAuthStore.getState().updateUserProfile({ dailyVibe: v, daily_vibe_expires_at: expiresIso });
   };
 
   useEffect(() => {

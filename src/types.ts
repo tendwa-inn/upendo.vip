@@ -40,7 +40,7 @@ export interface User {
   liked_at?: string; // For likes
   canViewProfilesExpiresAt?: string; // For profile views promo
   dailyVibe?: string;
-  dailyVibeExpiresAt?: string;
+  daily_vibe_expires_at?: string;
 }
 
 export interface AppSettings {
