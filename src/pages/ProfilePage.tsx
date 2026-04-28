@@ -39,14 +39,6 @@ const ProfilePage: React.FC = () => {
 
   const navigate = useNavigate();
 
-  if (!profile) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-[#22090E] to-[#2E0C13]">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white"></div>
-      </div>
-    );
-  }
-
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
@@ -67,6 +59,14 @@ const ProfilePage: React.FC = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState((profile as any)?.notifications_enabled ?? true);
   const [isLangMenuOpen, setLangMenuOpen] = useState(false);
   const [isLocationScopeMenuOpen, setLocationScopeMenuOpen] = useState(false);
+
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-[#22090E] to-[#2E0C13]">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white"></div>
+      </div>
+    );
+  }
   const isProfileComplete = React.useMemo(() => {
     return !!profile?.bio && !!profile?.location?.name && !!profile?.hereFor && (profile?.photos?.length || 0) >= 3;
   }, [profile]);
