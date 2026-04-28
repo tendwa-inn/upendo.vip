@@ -175,6 +175,12 @@ const HomePage: React.FC = () => {
         transition={{ duration: 0.6 }}
         className="w-full max-w-md"
       >
+        {/* Visible SEO Content for Google OAuth Verification */}
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <h1 style={{ fontSize: '18px', margin: '0', fontWeight: '600' }}>Upendo</h1>
+          <p style={{ fontSize: '14px', margin: '4px 0 0 0', color: '#666' }}>Upendo is the no-ghost dating app</p>
+        </div>
+
         <div className="text-center mb-8">
           <motion.div
             initial={{ scale: 0 }}
@@ -257,6 +263,11 @@ const HomePage: React.FC = () => {
           </div>
           <p className="text-pink-400">{t('copyright')}</p>
         </footer>
+
+        {/* Additional visible footer links for Google OAuth Verification */}
+        <div style={{ padding: '10px', textAlign: 'center', fontSize: '12px' }}>
+          <a href="/privacy" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>Privacy Policy</a> | <a href="/terms" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>Terms</a>
+        </div>
 
         {isProductsOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
