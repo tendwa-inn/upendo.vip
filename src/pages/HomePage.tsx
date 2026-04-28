@@ -15,7 +15,6 @@ const HomePage: React.FC = () => {
 
   const [isLangMenuOpen, setLangMenuOpen] = useState(false);
   const [isProductsOpen, setProductsOpen] = useState(false);
-  const [isTosOpen, setTosOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isInstallModalOpen, setInstallModalOpen] = useState(false);
@@ -252,7 +251,6 @@ const HomePage: React.FC = () => {
                 </div>
               )}
             </div>
-            <a href="#" onClick={(e) => { e.preventDefault(); setTosOpen(true); }} className="hover:text-white">{t('termsOfService')}</a>
             <a href="#" onClick={(e) => { e.preventDefault(); setProductsOpen(true); }} className="hover:text-white">{t('products')}</a>
             <Link to="/privacy" className="hover:text-white">{t('privacyPolicy', 'Privacy Policy')}</Link>
             <Link to="/terms" className="hover:text-white">{t('termsOfService')}</Link>
@@ -287,61 +285,7 @@ const HomePage: React.FC = () => {
           </div>
         )}
 
-        {isTosOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="w-full max-w-3xl bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] text-white rounded-2xl border border-pink-500/30 shadow-2xl overflow-hidden"
-            >
-              <div className="flex items-center justify-between p-4 border-b border-white/10">
-                <h2 className="text-xl font-bold text-pink-400">{t('termsOfService')}</h2>
-                <button
-                  onClick={() => setTosOpen(false)}
-                  aria-label={t('general.close')}
-                  className="p-2 bg-white/10 rounded-lg hover:bg-white/20"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-6 space-y-4 text-sm leading-6 text-white/90 max-h-[70vh] overflow-y-auto">
-                <p>
-                  Upendo is built on a simple promise: your data belongs to you. We do not sell personal information to third parties. We collect only what is needed to operate the service—such as account identifiers, profile details you choose to share, and activity signals that power discovery and safety features. We use industry‑standard encryption in transit and at rest, and we segment access so that only authorized systems and personnel can view sensitive data for operational reasons. Where possible, we de‑identify analytics so that aggregate insights help improve the product without exposing individual histories.
-                </p>
-                <p>
-                  Identity and security are core to the Upendo experience. We provide tools for profile verification and signals that help you evaluate authenticity before engaging. Suspicious behavior can be reported from within the app and is reviewed in line with our community guidelines. We reserve the right to limit features, request additional verification, or take action on accounts that violate policy. To protect the community, certain safety signals—such as device checks or abuse prevention markers—may be processed automatically; these systems exist solely to keep interactions safe and respectful.
-                </p>
-                <p>
-                  You control what you share. Profile fields are opt‑in, and you may update or remove content at any time. You can limit visibility using in‑app settings, and you may request deletion of your account and associated data subject to legal or operational retention requirements (for example, fraud prevention or lawful requests). We partner with trusted infrastructure providers for hosting and storage; those partners act on our instructions and are bound by contractual, technical and organizational safeguards.
-                </p>
-                <p>
-                  By using Upendo, you agree to communicate respectfully, comply with local laws, and avoid activities that harm others or the platform. Upendo may update these terms to reflect product or legal changes; material updates will be communicated in‑app. If any provision is found unenforceable, the remaining sections remain in effect. For questions about privacy, security or account rights, contact Support through the app. Our goal is to give every member a safe, reliable and transparent environment to meet, chat and build meaningful connections.
-                </p>
 
-                <h3 className="text-lg font-bold text-pink-400 pt-4">Subscription Tiers</h3>
-                <p>
-                  Upendo offers optional paid subscriptions that unlock exclusive features. Payments are processed securely through our partners and are subject to their terms.
-                </p>
-                <div className="pl-4">
-                  <h4 className="font-bold text-white">Upendo Pro includes:</h4>
-                  <ul className="list-disc list-inside text-white/80">
-                    <li>Unlimited Swipes</li>
-                    <li>See Who Likes You</li>
-                    <li>Advanced Search Filters</li>
-                    <li>Ad-Free Experience</li>
-                  </ul>
-                  <h4 className="font-bold text-white mt-2">Upendo VIP includes all Pro features, plus:</h4>
-                  <ul className="list-disc list-inside text-white/80">
-                    <li>Monthly Profile Boost</li>
-                    <li>Incognito Mode</li>
-                    <li>Read Receipts in Chat</li>
-                    <li>Exclusive VIP Profile Badge</li>
-                  </ul>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
       </motion.div>
 
       {isInstallModalOpen && (
