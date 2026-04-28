@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
-import { useUiStore } from '../stores/uiStore';
 import { Link, useNavigate } from 'react-router-dom';
 
 const SignUpPage: React.FC = () => {
   const { user, signInWithGoogle, signUpWithEmail, loading: isLoading } = useAuthStore();
-  const { openProfileSetupModal } = useUiStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
@@ -24,8 +22,7 @@ const SignUpPage: React.FC = () => {
     e.preventDefault();
     try {
       await signUpWithEmail(email, password);
-      // After onboarding completion, open the modal
-      openProfileSetupModal();
+      // User will be redirected to onboarding after sign up
     } catch (error) {
       console.error('Email Sign-Up Error:', error);
       // The error toast is already handled in the store

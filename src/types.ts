@@ -32,7 +32,7 @@ export interface User {
   messageRequestsSent?: number;
   messageRequestResetDate?: Date;
   role?: string;
-  accountType?: 'free' | 'pro' | 'vip';
+  account_type?: 'free' | 'pro' | 'vip';
   subscriptionTier?: string;
   ghostModeEnabled?: boolean;
   relationshipIntent?: string;
@@ -46,7 +46,7 @@ export interface User {
 export interface AppSettings {
   id: number;
   account_type: string;
-  swipes_per_week: number;
+  swipes_per_day: number;
   rewind_count: number;
   international_dating: boolean;
   unlimited_message_requests: boolean;

@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { useMatchStore } from '../stores/matchStore.tsx';
+import { useLikesStore } from '../stores/likesStore';
+import { useDiscoveryStore } from '../stores/discoveryStore';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, Check, X, Crown, Shield } from 'lucide-react';
+import { Search, SlidersHorizontal, Check, X, Crown, Shield, FileImage, Heart } from 'lucide-react';
 import { Match, User } from '../types';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
@@ -16,23 +18,44 @@ import ChatSettingsModal from '../components/modals/ChatSettingsModal';
 import { Megaphone } from 'lucide-react';
 import heySticker from '/Hey.png';
 
+import { systemMessengerService } from '../services/systemMessengerService';
+
 const ChatPage: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { matches, newMatches, fetchMatches, unmatch } = useMatchStore();
+  const { matches, newMatches, fetchMatches, unmatch, createMatch } = useMatchStore();
+  const { removeLike } = useLikesStore();
   const { user } = useAuthStore();
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAnnouncementsVisible, setIsAnnouncementsVisible] = useState(true);
   const [pendingDeletions, setPendingDeletions] = useState<string[]>([]);
+  const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
   const deleteTimers = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
   useEffect(() => {
     if (user) {
-      fetchMatches();
+      const checkUnread = async () => {
+        const messages = await systemMessengerService.getSystemMessages();
+        setHasUnreadAnnouncements(messages.some(m => !m.isRead));
+      };
+      checkUnread();
     }
-  }, [user, fetchMatches]);
+  }, [user]);
+
+
+
+  const handleOpenOrCreateMatch = async (userId: string) => {
+    const newMatch = await createMatch(userId);
+    if (newMatch) {
+      removeLike(userId);
+      toast.success('You matched!');
+      navigate(`/chat/${newMatch.id}`);
+    } else {
+      toast.error('Could not create a match.');
+    }
+  };
 
   const handleSelectMatch = (match: Match) => {
     navigate(`/chat/${match.id}`);
@@ -78,7 +101,7 @@ const ChatPage: React.FC = () => {
     return otherUser.name.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
-  const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
+  const acct = (useAuthStore.getState().profile as any)?.account_type || (useAuthStore.getState().profile as any)?.subscription;
   const isPro = acct === 'pro';
   return (
     <div className="h-full flex flex-col text-white">
@@ -114,37 +137,19 @@ const ChatPage: React.FC = () => {
           <div className="px-4">
             
             <div>
-            <h2 className={`${((useAuthStore.getState().profile as any)?.accountType === 'vip') ? 'text-amber-400' : (isPro ? 'text-[#ff7f50]' : 'text-pink-500')} font-bold my-4`}>{t('newMatches')}</h2>
+            <h2 className={`${((useAuthStore.getState().profile as any)?.account_type === 'vip') ? 'text-amber-400' : (isPro ? 'text-[#ff7f50]' : 'text-pink-400')} font-bold my-4`}>{t('newMatches')}</h2>
               <div className="flex space-x-4 overflow-x-auto pb-4">
                 {filteredNewMatches.map((match) => {
                   const otherUser = match.user1.id === user?.id ? match.user2 : match.user1;
                   return (
-                    <div key={match.id} className="flex-shrink-0 flex flex-col items-center space-y-1" onClick={() => handleSelectMatch(match)}>
-                      <div className="relative">
-                        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-pink-500 p-1">
-                          <SafeImage
-                            src={otherUser.photos[0]}
-                            alt={otherUser.name}
-                            className="w-full h-full object-cover rounded-full"
-                          />
+                    <div key={match.id} className="flex flex-col items-center space-y-2 text-center">
+                      <button onClick={() => handleOpenOrCreateMatch(otherUser.id)} className="relative block group">
+                        <SafeImage src={otherUser.photos?.[0] || '/placeholder-avatar.png'} alt={otherUser.name} className="w-16 h-16 rounded-full object-cover transition-transform group-hover:scale-105" />
+                        <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Heart className="w-6 h-6 text-white" />
                         </div>
-                        {otherUser.online && (
-                          <div className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-[#2E0C13]"></div>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <span className="text-sm font-semibold">{otherUser.name}</span>
-                        {/* Premium badge for Pro/VIP users */}
-                        {((otherUser as any).accountType === 'pro' || (otherUser as any).accountType === 'vip' || (otherUser as any).account_type === 'pro' || (otherUser as any).account_type === 'vip') && (
-                          <div className="flex items-center mt-1">
-                            {((otherUser as any).accountType || (otherUser as any).account_type) === 'vip' ? (
-                              <Shield className="w-3 h-3 text-black" />
-                            ) : (
-                              <Shield className="w-3 h-3 text-blue-500" />
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      </button>
+                      <p className="text-xs w-16 truncate">{otherUser.name}</p>
                     </div>
                   );
                 })}
@@ -152,7 +157,7 @@ const ChatPage: React.FC = () => {
             </div>
 
             <div>
-            <h2 className={`${((useAuthStore.getState().profile as any)?.accountType === 'vip') ? 'text-amber-400' : (isPro ? 'text-[#ff7f50]' : 'text-pink-500')} font-bold my-4`}>{t('conversations')}</h2>
+            <h2 className={`${((useAuthStore.getState().profile as any)?.account_type === 'vip') ? 'text-amber-400' : (isPro ? 'text-[#ff7f50]' : 'text-pink-400')} font-bold my-4`}>{t('conversations')}</h2>
               <div className="overflow-y-auto h-full">
                 {/* Static Announcements Link */}
                 {isAnnouncementsVisible && !pendingDeletions.includes('announcements') && (
@@ -167,8 +172,11 @@ const ChatPage: React.FC = () => {
                   >
                     <Link to="/system-messages" className="flex items-center space-x-4 p-3 rounded-lg transition-all duration-200 hover:bg-white/5">
                       <div className="relative">
-                        <div className={`w-14 h-14 rounded-full overflow-hidden flex items-center justify-center ${((useAuthStore.getState().profile as any)?.accountType === 'vip') ? 'bg-amber-500/20' : (isPro ? 'bg-[#ff7f50]/20' : 'bg-pink-500/20')}`}>
-                          <Megaphone className={`w-8 h-8 ${((useAuthStore.getState().profile as any)?.accountType === 'vip') ? 'text-amber-300' : (isPro ? 'text-[#ff7f50]' : 'text-pink-400')}`} />
+                        {hasUnreadAnnouncements && (
+                          <div className="absolute top-0 right-0 w-3 h-3 bg-pink-500 rounded-full border-2 border-gray-800"></div>
+                        )}
+                        <div className={`w-14 h-14 rounded-full overflow-hidden flex items-center justify-center ${((useAuthStore.getState().profile as any)?.account_type === 'vip') ? 'bg-amber-500/20' : (isPro ? 'bg-cyan-500/20' : 'bg-pink-500/20')}`}>
+                          <Megaphone className={`w-8 h-8 ${((useAuthStore.getState().profile as any)?.account_type === 'vip') ? 'text-amber-300' : (isPro ? 'text-cyan-400' : 'text-pink-300')}`} />
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -207,9 +215,9 @@ const ChatPage: React.FC = () => {
                         </div>
                         {unreadCount > 0 && (
                           <div className={`absolute top-0 right-0 w-4 h-4 rounded-full border-2 flex items-center justify-center text-xs ${
-                            ((useAuthStore.getState().profile as any)?.accountType === 'vip')
+                            ((useAuthStore.getState().profile as any)?.account_type === 'vip')
                               ? 'bg-amber-400 text-black border-black'
-                              : (isPro ? 'bg-[#ff7f50] text-black border-[#0b2237]' : 'bg-pink-500 border-[#2E0C13]')
+                              : (isPro ? 'bg-cyan-400 text-black border-[#0b2237]' : 'bg-pink-500 border-[#2E0C13]')
                           }`}>
                             {unreadCount}
                           </div>
@@ -218,14 +226,18 @@ const ChatPage: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold truncate text-gray-200">{otherUser.name}</h3>
+                            <h3 className={`font-bold truncate ${
+                              (otherUser as any).account_type === 'vip' ? 'text-amber-400' : 
+                              (otherUser as any).account_type === 'pro' ? 'text-cyan-400' : 
+                              'text-pink-400'
+                            }`}>{otherUser.name}</h3>
                             {/* Premium badge for Pro/VIP users */}
-                            {((otherUser as any).accountType === 'pro' || (otherUser as any).accountType === 'vip' || (otherUser as any).account_type === 'pro' || (otherUser as any).account_type === 'vip') && (
+                            {((otherUser as any).account_type === 'pro' || (otherUser as any).account_type === 'vip') && (
                               <div className="flex items-center">
-                                {((otherUser as any).accountType || (otherUser as any).account_type) === 'vip' ? (
-                                  <Shield className="w-4 h-4 text-black" />
+                                {(otherUser as any).account_type === 'vip' ? (
+                                  <Shield className="w-4 h-4 text-amber-400" fill="currentColor" />
                                 ) : (
-                                  <Shield className="w-4 h-4 text-blue-500" />
+                                  <Shield className="w-4 h-4 text-cyan-400" fill="currentColor" />
                                 )}
                               </div>
                             )}
@@ -239,6 +251,8 @@ const ChatPage: React.FC = () => {
                             {match.lastMessage.senderId === user?.id && <Check className="w-4 h-4 mr-1" />}
                             {match.lastMessage.content === '/sticker hey' ? (
                               <img src={heySticker} alt="Hey" className="w-8 h-8 object-contain" />
+                            ) : match.lastMessage.content.includes('.gif') ? (
+                              <span className="flex items-center"><FileImage className="w-4 h-4 mr-1" /> GIF</span>
                             ) : (
                               match.lastMessage.content
                             )}

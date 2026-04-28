@@ -18,135 +18,68 @@ import ProfileSetupModal from './modals/ProfileSetupModal';
 import NotificationPermissionPrompt from './common/NotificationPermissionPrompt';
 
 
+import { getTheme } from '../styles/theme';
+
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
+  const isUserProfilePage = location.pathname.startsWith('/user/');
+  const isNotificationsPage = location.pathname === '/notifications';
   const { t } = useTranslation();
-  const { user } = useAuthStore();
-  const { theme } = useThemeStore();
+  const { profile } = useAuthStore();
   const { isProfileSetupModalOpen, closeProfileSetupModal } = useUiStore();
   const navigate = useNavigate();
-
-
 
   const handleRedirectToProfile = () => {
     navigate('/profile');
     closeProfileSetupModal();
   };
-  const { selectedMatch, matches, hasNewMatches, markMatchesAsViewed } = useMatchStore();
+  const { hasNewMatches, markMatchesAsViewed } = useMatchStore();
   const isConversationPage = location.pathname.startsWith('/chat/');
   const isSystemMessagePage = location.pathname === '/system-messages';
   const hideNav = isConversationPage || isSystemMessagePage;
 
-
-
-  const getNavColors = () => {
-    const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription || user?.role;
-    if (acct === 'vip') {
-      return {
-        find: 'text-amber-400',
-        discover: 'text-amber-400',
-        chat: 'text-amber-400',
-        profile: 'text-amber-400',
-      };
-    }
-    if (acct === 'pro') {
-      return {
-        find: 'text-[#ff7f50]',
-        discover: 'text-[#ff7f50]',
-        chat: 'text-[#ff7f50]',
-        profile: 'text-[#ff7f50]',
-      };
-    }
-    if (theme === 'dark') {
-      return {
-        find: 'text-gray-300',
-        discover: 'text-gray-300',
-        chat: 'text-gray-400',
-        profile: 'text-white',
-      };
-    }
-    return {
-      find: 'text-pink-500',
-      discover: 'text-pink-500',
-      chat: 'text-purple-500',
-      profile: 'text-indigo-500',
-    };
-  };
+  const accountType = (profile as any)?.account_type || (profile as any)?.subscription || 'free';
+  const theme = getTheme(accountType);
 
   const navItems = [
     {
       path: '/find',
       icon: Heart,
       label: t('find'),
-      color: getNavColors().find,
+      color: theme.nav.find,
     },
     {
       path: '/discover',
       icon: Compass,
       label: t('discover'),
-      color: getNavColors().discover,
+      color: theme.nav.discover,
     },
     {
       path: '/chat',
       icon: MessageCircle,
       label: t('chat'),
-      color: getNavColors().chat,
+      color: theme.nav.chat,
     },
     {
       path: '/connections',
       icon: Users,
       label: t('connect'),
-      color: getNavColors().discover,
+      color: theme.nav.connections,
     },
     {
       path: '/profile',
       icon: User,
       label: t('profile'),
-      color: getNavColors().profile,
+      color: theme.nav.profile,
     },
   ];
 
-  const getThemeClass = () => {
-    const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription || user?.role;
-    if (acct === 'vip') {
-      return 'bg-gradient-to-b from-black to-[#0b0b0b]';
-    }
-    if (acct === 'pro') {
-      return 'bg-gradient-to-b from-[#071521] to-[#0b2237]';
-    }
-    return theme === 'dark' ? 'gradient-pro' : 'gradient-romantic';
-  };
-
-  const isChatPage = location.pathname === '/chat';
-  const isVip =
-    ((useAuthStore.getState().profile as any)?.accountType === 'vip') ||
-    ((useAuthStore.getState().profile as any)?.subscription === 'vip') ||
-    user?.role === 'vip';
-
-  const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription || user?.role;
-  const isPro = acct === 'pro';
   return (
-    <div className={cn("relative min-h-screen text-white", isChatPage ? (isVip ? "bg-gradient-to-b from-black to-[#0b0b0b]" : isPro ? "bg-gradient-to-b from-[#071521] to-[#0b2237]" : "bg-gradient-to-b from-[#22090E] to-[#2E0C13]") : getThemeClass())}>
-      {/* Background */}
-      {!isChatPage && (
-        <>
-          <div className="absolute inset-0 bg-stone-900" />
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundSize: 'contain',
-              backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat',
-              opacity: 0.1,
-            }}
-          />
-        </>
-      )}
-      
+    <div className={cn("relative min-h-[100dvh] text-white", theme.background)}>
       {/* Content */}
-      <div className="relative z-10 flex flex-col min-h-screen">
+      <div className="relative z-10 flex flex-col min-h-[100dvh]">
         {/* Main Content */}
-        <main className={cn("flex-1", !hideNav && "pb-24")}>
+        <main className={cn("flex-1", !hideNav && !isUserProfilePage && !isNotificationsPage && "pb-24")}>
           {children}
         </main>
 
@@ -174,7 +107,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       className={cn(
                         'relative flex flex-col items-center justify-center flex-1 h-12 rounded-lg transition-all duration-300 max-w-16',
                         'hover:bg-white/20 active:scale-95',
-                        isActive ? 'shadow-lg scale-105' : 'bg-transparent'
+                        isActive ? 'shadow-lg scale-105' : 'bg-transparent opacity-60'
                       )}
                       onClick={() => {
                         if (item.path === '/chat') {
@@ -185,20 +118,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <Icon
                       className={cn(
                         'w-4 h-4 mb-1 transition-all duration-300',
-                        isActive ? item.color : ((useAuthStore.getState().profile as any)?.accountType === 'vip' || user?.role === 'vip') ? 'text-amber-400' : (acct === 'pro' ? 'text-[#ff7f50]' : (theme === 'dark' ? 'text-gray-400' : 'text-gray-600')),
+                        isActive ? item.color : theme.nav.inactive,
                         isActive && 'drop-shadow-lg'
                       )}
                     />
                     <span
                       className={cn(
                         'text-[10px] font-bold transition-all duration-300',
-                        isActive ? item.color : ((useAuthStore.getState().profile as any)?.accountType === 'vip' || user?.role === 'vip') ? 'text-amber-400' : (acct === 'pro' ? 'text-[#ff7f50]' : (theme === 'dark' ? 'text-gray-400' : 'text-gray-600'))
+                        isActive ? item.color : theme.nav.inactive
                       )}
                     >
                       {item.label}
                     </span>
                     {item.path === '/chat' && hasNewMatches && (
-                      <div className={cn("absolute top-0.5 right-0.5 w-2 h-2 rounded-full", isVip ? "bg-amber-400" : (acct === 'pro' ? "bg-[#ff7f50]" : "bg-pink-500"))}></div>
+                      <div className={cn("absolute top-0.5 right-0.5 w-2 h-2 rounded-full", theme.primary)}></div>
                     )}
                   </Link>
                 );

@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabaseClient';
 import { motion } from 'framer-motion';
 import { Ticket, Crown, Shield, XCircle } from 'lucide-react';
+import { promoService } from '../services/promoService';
 import ConfirmationModal from './modals/ConfirmationModal';
 
 const SavedPromos = () => {
@@ -45,52 +46,56 @@ const SavedPromos = () => {
     if (!promoToCancel) return;
 
     const promo = promos.find(p => p.id === promoToCancel);
-    console.log('Canceling promo:', { promoToCancel, foundPromo: promo });
 
     try {
-      // If it's a subscription promo, revert user to free and reset premium features
+      // If it's a subscription promo, call the secure RPC to revert the user to free
       if (promo && (promo.promo_codes.type === 'pro_account' || promo.promo_codes.type === 'vip_account')) {
-        console.log('Downgrading user to free account and resetting premium features.');
-        await useAuthStore.getState().updateUserProfile({ 
-          accountType: 'free',
-          ghostModeEnabled: false
-        });
+        const { error: rpcError } = await supabase.rpc('revert_subscription_to_free');
+        if (rpcError) {
+          console.error('Error reverting subscription:', rpcError);
+          toast.error('Failed to update your subscription status. Please try again.');
+          // Do not proceed with deletion if the RPC fails
+          setIsConfirmModalOpen(false);
+          setPromoToCancel(null);
+          return;
+        }
       } else if (promo && promo.promo_codes.type === 'profile_views') {
-        console.log('Removing profile view privileges.');
+        // This part can still be a direct update if the RLS allows it, or it could be another RPC
+        // For now, we assume the updateUserProfile is safe for non-subscription fields
         await useAuthStore.getState().updateUserProfile({ 
           canViewProfilesExpiresAt: null as any
         });
       }
 
-      // Delete the promo record
-      const { error } = await supabase.from('user_promos').delete().eq('id', promoToCancel);
-      if (error) throw error;
+      // Delete the promo from the database
+      await promoService.cancelPromo(promoToCancel);
 
-      // Add notification for promo deletion
+      // Create a notification for the user
       if (promo) {
         const promoName = promo.promo_codes.name;
         const promoType = promo.promo_codes.type;
-        const accountType = promoType === 'pro_account' ? 'Pro' : promoType === 'vip_account' ? 'VIP' : promoType === 'profile_views' ? 'Profile Views' : 'Premium';
+        const accountType = promoType === 'pro_account' ? 'Pro' : promoType === 'vip_account' ? 'VIP' : 'Premium';
         const messageText = promoType === 'profile_views' 
-          ? `Your "${promoName}" promotion has been removed. You can no longer view who liked/viewed your profile.`
-          : `Your ${accountType} promotion "${promoName}" has been removed. Your account has been downgraded to free tier.`;
+          ? `Your "${promoName}" promotion has been removed.`
+          : `Your ${accountType} promotion "${promoName}" has been removed. Your account has been downgraded.`;
 
         await supabase.from('notifications').insert({
           user_id: user.id,
           title: 'Promotion Removed',
           message: messageText,
           type: 'system',
-          created_at: new Date().toISOString()
         });
       }
 
-      // Refresh UI
-      fetchUserPromos();
-      useAuthStore.getState().checkUser();
+      // Optimistically update the UI for instant feedback
+      setPromos(prevPromos => prevPromos.filter(p => p.id !== promoToCancel));
 
     } catch (error) {
       console.error('Error canceling promo:', error);
+      toast.error(error.message || 'Failed to cancel promotion.');
     } finally {
+      // Ensure the modal is always closed
+      setIsConfirmModalOpen(false);
       setPromoToCancel(null);
     }
   };
@@ -102,18 +107,6 @@ const SavedPromos = () => {
 
   useEffect(() => {
     fetchUserPromos();
-
-    // Listen for profile updates to refresh promos
-    const unsubscribe = useAuthStore.subscribe(
-      (state, prevState) => {
-        if (state.profile?.accountType !== prevState.profile?.accountType) {
-          fetchUserPromos();
-        }
-      }
-    );
-
-    return () => unsubscribe();
-
   }, [user]);
 
   if (isLoading) {

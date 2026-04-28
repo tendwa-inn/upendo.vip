@@ -102,4 +102,5 @@ export interface PromoCode {
   createdAt: Date;
   expiresAt?: Date;
   effect: { [key: string]: any };
+  isArchived?: boolean;
 }

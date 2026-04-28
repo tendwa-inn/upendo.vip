@@ -1,9 +1,9 @@
-import { supabase } from '../utils/supabase';
+import { supabase } from '../lib/supabaseClient';
 
 export interface AppSettings {
   id: number;
   account_type: string;
-  swipes_per_week: number;
+  swipes_per_day: number;
   rewind_count: number;
   international_dating: boolean;
   unlimited_message_requests: boolean;
@@ -13,8 +13,6 @@ export interface AppSettings {
   visibility_rate: number;
   message_requests: number;
   profile_views: number;
-  ghost_mode: boolean;
-  read_receipts: boolean;
 }
 
 export const adminSettingsService = {

@@ -1,44 +1,42 @@
 import { create } from 'zustand';
-import { notificationService } from '../services/notificationService';
+import { supabase } from '../lib/supabaseClient';
 import { Notification } from '../types';
 import { useAuthStore } from './authStore';
-import { supabase } from '../lib/supabaseClient';
-import toast from 'react-hot-toast';
 
-interface NotificationState {
+interface NotificationStore {
   notifications: Notification[];
   unreadCount: number;
   fetchNotifications: () => Promise<void>;
-  markAsRead: (notificationId: number) => Promise<void>;
   addNotification: (notification: Notification) => void;
+  markAsRead: (notificationId: number) => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
+  reset: () => void;
 }
 
-export const useNotificationStore = create<NotificationState>((set, get) => ({
+export const useNotificationStore = create<NotificationStore>((set, get) => ({
   notifications: [],
   unreadCount: 0,
 
   fetchNotifications: async () => {
-    const user = useAuthStore.getState().user;
+    const { user } = useAuthStore.getState();
     if (!user) return;
 
-    const notifications = await notificationService.getNotifications(user.id);
-    set({ notifications, unreadCount: notifications.filter(n => !n.isRead).length });
-  },
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*, notification_read_status(user_id)')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
 
-  markAsRead: async (notificationId: string | number) => {
-    await notificationService.markAsRead(Number(notificationId));
-    set(state => {
-      const isAlreadyRead = state.notifications.find(
-        n => n.id.toString() === notificationId.toString()
-      )?.isRead;
+    if (error) {
+      console.error('Error fetching notifications:', error);
+      return;
+    }
 
-      return {
-        notifications: state.notifications.map(n =>
-          n.id.toString() === notificationId.toString() ? { ...n, isRead: true } : n
-        ),
-        // Only decrement if it wasn't already marked as read
-        unreadCount: !isAlreadyRead ? Math.max(0, state.unreadCount - 1) : state.unreadCount
-      };
+    const notificationsWithReadStatus = data?.map(n => ({ ...n, isRead: n.notification_read_status.length > 0 })) || [];
+
+    set({ 
+      notifications: notificationsWithReadStatus,
+      unreadCount: notificationsWithReadStatus.filter(n => !n.isRead).length 
     });
   },
 
@@ -49,36 +47,40 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     }));
   },
 
-  clearAllNotifications: async () => {
-    const user = useAuthStore.getState().user;
+  markAsRead: async (notificationId) => {
+    const { user } = useAuthStore.getState();
     if (!user) return;
 
-    // Delete all notifications visible to the user (personal + system)
-    // This will respect the RLS policy that allows deletion of:
-    // 1. Notifications where user_id = auth.uid() (personal notifications)
-    // 2. Notifications where user_id IS NULL (system notifications)
-    // We use a WHERE clause that includes both cases
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .or(`user_id.eq.${user.id},user_id.is.null`);
+    set(state => ({
+      notifications: state.notifications.map(n => 
+        n.id === notificationId ? { ...n, isRead: true } : n
+      ),
+      unreadCount: Math.max(0, state.unreadCount - 1),
+    }));
+
+    await supabase
+      .from('notification_read_status')
+      .insert([{ notification_id: notificationId, user_id: user.id }]);
+  },
+
+  clearAllNotifications: async () => {
+    const { user } = useAuthStore.getState();
+    if (!user) return;
+
+    // Immediately clear the state locally
+    set({ notifications: [], unreadCount: 0 });
+
+    // Then, delete the records from the database in the background
+    const { error } = await supabase.rpc('delete_all_user_notifications');
 
     if (error) {
-      console.error("Error clearing notifications:", error);
-      toast.error("Could not clear notifications. Please check your connection or permissions.");
-    } else {
-      set({ notifications: [], unreadCount: 0 });
+      console.error('Error clearing notifications from DB:', error);
+      // Optional: Re-fetch to revert local state if DB deletion fails
+      get().fetchNotifications();
     }
   },
-}));
 
-// Real-time listener for new notifications
-const user = useAuthStore.getState().user;
-if (user) {
-  supabase
-    .channel(`notifications:${user.id}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload) => {
-      useNotificationStore.getState().addNotification(payload.new as Notification);
-    })
-    .subscribe();
-}
+  reset: () => {
+    set({ notifications: [], unreadCount: 0 });
+  },
+}));

@@ -18,7 +18,10 @@ const EditableCell: React.FC<EditableCellProps> = ({ value, onChange }) => {
     if (typeof value === 'boolean') {
       return <Switch checked={value} onChange={(checked) => handleBlur(checked)} />;
     }
-    return <NumberInput value={value} onValueChange={(val) => onChange(val || 0)} onBlur={() => setIsEditing(false)} />;
+    return <NumberInput value={value} onValueChange={(val) => {
+          if (val === null || val === undefined) return;
+          onChange(val);
+        }} onBlur={() => setIsEditing(false)} />;
   }
 
   return (

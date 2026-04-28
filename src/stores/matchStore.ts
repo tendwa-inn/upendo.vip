@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 import { Match, User, Message } from '../types';
@@ -10,9 +11,18 @@ const normalizeMessage = (msg: any): Message => ({
   timestamp: msg.created_at,
 });
 
+const normalizeUser = (user: any): User => {
+  return {
+    ...user,
+    lastActive: user.last_active_at ? new Date(user.last_active_at) : undefined,
+    account_type: user.account_type ?? user.subscription,
+  };
+};
+
 interface MatchState {
   matches: Match[];
   selectedMatch: Match | null;
+  typingUsers: { [matchId: string]: string[] };
   fetchMatches: () => Promise<void>;
   createMatch: (user2Id: string) => Promise<Match | null>;
   selectMatch: (match: Match | null) => void;
@@ -24,11 +34,70 @@ interface MatchState {
   checkMatch: (currentUser: User, swipedUser: User) => boolean;
   editMessage: (matchId: string, messageId: string, newContent: string) => Promise<void>;
   deleteMessage: (matchId: string, messageId: string) => Promise<void>;
+  setTyping: (matchId: string, userId: string, isTyping: boolean) => void;
+  subscribeToProfileChanges: () => any; // Return type is Supabase channel
+  unsubscribeFromProfileChanges: () => void;
+  listenForStrikes: () => () => void;
 }
 
 export const useMatchStore = create<MatchState>((set, get) => ({
   matches: [],
   selectedMatch: null,
+  typingUsers: {},
+
+  subscribeToProfileChanges: () => {
+    const channel = supabase
+      .channel('profiles-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+        },
+        (payload) => {
+          const updatedProfile = payload.new as User;
+          const { matches } = get();
+
+          const updatedMatches = matches.map(match => {
+            if (match.user1.id === updatedProfile.id) {
+              return { ...match, user1: { ...match.user1, ...normalizeUser(updatedProfile) } };
+            }
+            if (match.user2.id === updatedProfile.id) {
+              return { ...match, user2: { ...match.user2, ...normalizeUser(updatedProfile) } };
+            }
+            return match;
+          });
+
+          set({ matches: updatedMatches });
+        }
+      )
+      .subscribe();
+
+    return channel;
+  },
+
+  unsubscribeFromProfileChanges: () => {
+    const channel = (window as any).profileChangesChannel;
+    if (channel) {
+      supabase.removeChannel(channel);
+    }
+  },
+
+  setTyping: (matchId, userId, isTyping) => {
+    set((state) => {
+      const current = state.typingUsers[matchId] || [];
+      const updated = isTyping
+        ? Array.from(new Set([...current, userId]))
+        : current.filter((id) => id !== userId);
+      return {
+        typingUsers: {
+          ...state.typingUsers,
+          [matchId]: updated,
+        },
+      };
+    });
+  },
 
   fetchMatches: async () => {
     const currentUser = useAuthStore.getState().user;
@@ -39,17 +108,11 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       .select('blocked_user_id')
       .eq('user_id', currentUser.id);
 
-    console.log('Blocked Users Data:', blockedUsersData);
-    if (blockedUsersError) {
-      console.error('Error fetching blocked users:', blockedUsersError);
-      return;
-    }
-
-    const blockedUserIds = blockedUsersData.map(b => b.blocked_user_id);
+    const blockedUserIds = (blockedUsersData || []).map(b => b.blocked_user_id);
 
     let query = supabase
       .from('matches')
-      .select('*, user1:profiles!user1_id(*), user2:profiles!user2_id(*), messages:messages(*)')
+      .select('*, user1:profiles!user1_id(id, name, photos, account_type, subscription, last_active_at), user2:profiles!user2_id(id, name, photos, account_type, subscription, last_active_at), messages:messages(*)')
       .or(`user1_id.eq.${currentUser.id},user2_id.eq.${currentUser.id}`);
 
     if (blockedUserIds.length > 0) {
@@ -66,9 +129,18 @@ export const useMatchStore = create<MatchState>((set, get) => ({
     }
 
     const matchesWithLastMessage = data.map(match => {
+      const user1 = normalizeUser(match.user1);
+      const user2 = normalizeUser(match.user2);
+
       const normalizedMessages = match.messages.map(normalizeMessage);
       const sortedMessages = normalizedMessages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      return { ...match, messages: normalizedMessages, lastMessage: sortedMessages[0] };
+      return { 
+        ...match, 
+        user1,
+        user2,
+        messages: normalizedMessages, 
+        lastMessage: sortedMessages[0] 
+      };
     });
 
     set({ matches: matchesWithLastMessage });
@@ -78,8 +150,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
     const currentUser = useAuthStore.getState().user;
     if (!currentUser) return null;
 
-    // Check if a match already exists
-    const { data: existingMatch, error: existingMatchError } = await supabase
+    const { data: existingMatch } = await supabase
       .from('matches')
       .select('*, user1:profiles!user1_id(*), user2:profiles!user2_id(*), messages:messages(*)')
       .or(`(user1_id.eq.${currentUser.id},and(user2_id.eq.${user2Id}))`)
@@ -91,7 +162,6 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       return { ...existingMatch, messages: normalizedMessages };
     }
 
-    // If no match exists, create a new one
     const { data, error } = await supabase
       .from('matches')
       .insert({ user1_id: currentUser.id, user2_id: user2Id })
@@ -118,11 +188,9 @@ export const useMatchStore = create<MatchState>((set, get) => ({
         const newMessage = normalizeMessage(payload.new);
         const state = get();
 
-        // Check if the message belongs to an existing match
         const matchIndex = state.matches.findIndex(m => m.id === newMessage.match_id);
-        if (matchIndex === -1) return; // Or fetch the new match info
+        if (matchIndex === -1) return;
 
-        // Avoid adding a duplicate if the sender is the current user
         if (newMessage.sender_id === useAuthStore.getState().user?.id) return;
 
         const updatedMatch = {
@@ -217,7 +285,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   },
 
   editMessage: async (matchId, messageId, newContent) => {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('messages')
       .update({ content: newContent, is_edited: true })
       .eq('id', messageId);
@@ -226,9 +294,6 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       console.error('Error editing message:', error);
       return;
     }
-
-    // This part is tricky because we don't get the updated record back by default.
-    // We will optimistically update the UI.
     set((state) => ({
       matches: state.matches.map((match) =>
         match.id === matchId
@@ -257,5 +322,24 @@ export const useMatchStore = create<MatchState>((set, get) => ({
         ? { ...state.selectedMatch, messages: state.selectedMatch.messages.filter(m => m.id !== messageId) }
         : state.selectedMatch,
     }));
+  },
+
+  listenForStrikes: () => {
+    const channel = supabase
+      .channel('match-strikes-listener')
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'matches' },
+        (payload) => {
+          console.log('Match deleted (likely due to strike), refreshing matches...', payload);
+          // Refetch matches to remove users who were unmatched due to strikes
+          get().fetchMatches();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   },
 }));

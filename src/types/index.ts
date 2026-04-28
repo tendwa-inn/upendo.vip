@@ -18,6 +18,8 @@ export interface User {
     city: string;
   };
   subscription: 'free' | 'pro' | 'vip' | 'admin' | 'mod';
+  account_type?: 'free' | 'pro' | 'vip';
+  subscriptionExpiresAt?: string;
   isVerified: boolean;
   messageRequestsSent?: number;
   messageRequestResetDate?: Date;

@@ -1,0 +1,1 @@
+ALTER TABLE public.system_messages ADD COLUMN target TEXT NOT NULL DEFAULT 'all';

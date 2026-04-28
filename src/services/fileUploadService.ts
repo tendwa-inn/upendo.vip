@@ -1,5 +1,5 @@
 
-import { supabase } from '../utils/supabase';
+import { supabase } from '../lib/supabaseClient';
 
 export const fileUploadService = {
   async upload(file: File, bucket: string): Promise<string> {

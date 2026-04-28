@@ -45,18 +45,38 @@ const AdminReportsPage: React.FC = () => {
   const loadAllReports = async () => {
     try {
       setLoading(true);
+      console.log('Loading reports...');
+      
       const [appeals, accounts, messages] = await Promise.all([
-        reportService.getUserAppeals(),
-        reportService.getReportedAccounts(),
-        reportService.getReportedMessages(),
+        reportService.getUserAppeals().catch(err => {
+          console.error('Error loading appeals:', err);
+          return [];
+        }),
+        reportService.getReportedAccounts().catch(err => {
+          console.error('Error loading reported accounts:', err);
+          return [];
+        }),
+        reportService.getReportedMessages().catch(err => {
+          console.error('Error loading reported messages:', err);
+          return [];
+        }),
       ]);
       
-      setUserAppeals(appeals);
-      setReportedAccounts(accounts);
-      setReportedMessages(messages);
+      console.log('Loaded appeals:', appeals);
+      console.log('Loaded accounts:', accounts);
+      console.log('Loaded messages:', messages);
+      
+      setUserAppeals(appeals || []);
+      setReportedAccounts(accounts || []);
+      setReportedMessages(messages || []);
     } catch (error) {
       toast.error('Failed to load reports');
       console.error('Error loading reports:', error);
+      
+      // Set empty arrays as fallback
+      setUserAppeals([]);
+      setReportedAccounts([]);
+      setReportedMessages([]);
     } finally {
       setLoading(false);
     }
@@ -126,7 +146,12 @@ const AdminReportsPage: React.FC = () => {
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6">User Reports & Appeals</h1>
+            <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">User Reports & Appeals</h1>
+        <Button onClick={loadAllReports} disabled={loading}>
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </div>
       
       <TabGroup defaultIndex={activeTab} onIndexChange={setActiveTab}>
         <TabList>
@@ -169,17 +194,17 @@ const AdminReportsPage: React.FC = () => {
                 <TableBody>
                   {userAppeals.map((appeal) => (
                     <TableRow key={appeal.id}>
-                      <TableCell>{appeal.userName}</TableCell>
+                      <TableCell>{appeal.userName || 'Unknown User'}</TableCell>
                       <TableCell>
                         <Badge color={appeal.actionType === 'ban' ? 'red' : appeal.actionType === 'suspension' ? 'orange' : 'yellow'}>
-                          {appeal.actionType.toUpperCase()}
+                          {(appeal.actionType || 'unknown').toUpperCase()}
                         </Badge>
                       </TableCell>
-                      <TableCell>{appeal.reason}</TableCell>
+                      <TableCell>{appeal.reason || 'No reason provided'}</TableCell>
                       <TableCell>
-                        <Text className="max-w-xs truncate">{appeal.appealReason}</Text>
+                        <Text className="max-w-xs truncate">{appeal.appealReason || 'No appeal reason provided'}</Text>
                       </TableCell>
-                      <TableCell>{appeal.createdAt.toLocaleDateString()}</TableCell>
+                      <TableCell>{appeal.createdAt ? new Date(appeal.createdAt).toLocaleDateString() : "N/A"}</TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
                           <Button 
@@ -196,9 +221,7 @@ const AdminReportsPage: React.FC = () => {
                 </TableBody>
               </Table>
               {userAppeals.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No pending appeals
-                </div>
+                <div className="text-center py-8 text-gray-500">No pending appeals</div>
               )}
             </Card>
           </TabPanel>
@@ -222,22 +245,22 @@ const AdminReportsPage: React.FC = () => {
                 <TableBody>
                   {reportedAccounts.map((report) => (
                     <TableRow key={report.id}>
-                      <TableCell>{report.reportedUserName}</TableCell>
-                      <TableCell>{report.reportedByName}</TableCell>
+                      <TableCell>{report.reportedUserName || 'Unknown User'}</TableCell>
+                      <TableCell>{report.reportedByName || 'Unknown Reporter'}</TableCell>
                       <TableCell>
-                        <Badge color="red">{report.reason.replace('_', ' ').toUpperCase()}</Badge>
+                        <Badge color="red">{(report.reason || 'unknown').replace('_', ' ').toUpperCase()}</Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge color={getPriorityColor(report.priority)}>
-                          {report.priority.toUpperCase()}
+                        <Badge color={getPriorityColor(report.priority || 'medium')}>
+                          {(report.priority || 'medium').toUpperCase()}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge color={getStatusColor(report.status)}>
-                          {report.status.replace('_', ' ').toUpperCase()}
+                        <Badge color={getStatusColor(report.status || 'pending')}>
+                          {(report.status || 'pending').replace('_', ' ').toUpperCase()}
                         </Badge>
                       </TableCell>
-                      <TableCell>{report.createdAt.toLocaleDateString()}</TableCell>
+                      <TableCell>{report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "N/A"}</TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
                           <Button 
@@ -254,9 +277,7 @@ const AdminReportsPage: React.FC = () => {
                 </TableBody>
               </Table>
               {reportedAccounts.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No reported accounts
-                </div>
+                <div className="text-center py-8 text-gray-500">No reported accounts</div>
               )}
             </Card>
           </TabPanel>
@@ -280,20 +301,20 @@ const AdminReportsPage: React.FC = () => {
                 <TableBody>
                   {reportedMessages.map((report) => (
                     <TableRow key={report.id}>
-                      <TableCell>{report.senderName}</TableCell>
-                      <TableCell>{report.reportedByName}</TableCell>
+                      <TableCell>{report.senderName || 'Unknown Sender'}</TableCell>
+                      <TableCell>{report.reportedByName || 'Unknown Reporter'}</TableCell>
                       <TableCell>
-                        <Text className="max-w-xs truncate">{report.content}</Text>
+                        <Text className="max-w-xs truncate">{report.content || 'No content available'}</Text>
                       </TableCell>
                       <TableCell>
-                        <Badge color="red">{report.reason}</Badge>
+                        <Badge color="red">{report.reason || 'unknown'}</Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge color={getStatusColor(report.status)}>
-                          {report.status.replace('_', ' ').toUpperCase()}
+                        <Badge color={getStatusColor(report.status || 'pending')}>
+                          {(report.status || 'pending').replace('_', ' ').toUpperCase()}
                         </Badge>
                       </TableCell>
-                      <TableCell>{report.createdAt.toLocaleDateString()}</TableCell>
+                      <TableCell>{report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "N/A"}</TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
                           <Button 
@@ -327,26 +348,26 @@ const AdminReportsPage: React.FC = () => {
             <div className="mt-4 space-y-4">
               <div>
                 <Text className="font-semibold">User:</Text>
-                <Text>{selectedAppeal.userName}</Text>
+                <Text>{selectedAppeal.userName || 'Unknown User'}</Text>
               </div>
               <div>
                 <Text className="font-semibold">Action Type:</Text>
                 <Badge color={selectedAppeal.actionType === 'ban' ? 'red' : 'orange'}>
-                  {selectedAppeal.actionType.toUpperCase()}
+                  {(selectedAppeal.actionType || 'unknown').toUpperCase()}
                 </Badge>
               </div>
               <div>
                 <Text className="font-semibold">Original Reason:</Text>
-                <Text>{selectedAppeal.reason}</Text>
+                <Text>{selectedAppeal.reason || 'No reason provided'}</Text>
               </div>
               <div>
                 <Text className="font-semibold">Appeal Reason:</Text>
-                <Text>{selectedAppeal.appealReason}</Text>
+                <Text>{selectedAppeal.appealReason || 'No appeal reason provided'}</Text>
               </div>
               {selectedAppeal.expiresAt && (
                 <div>
                   <Text className="font-semibold">Expires At:</Text>
-                  <Text>{selectedAppeal.expiresAt.toLocaleDateString()}</Text>
+                  <Text>{selectedAppeal.expiresAt ? new Date(selectedAppeal.expiresAt).toLocaleDateString() : "N/A"}</Text>
                 </div>
               )}
               <div>
@@ -391,30 +412,30 @@ const AdminReportsPage: React.FC = () => {
           <Title>Review Reported Account</Title>
           {selectedReport && (
             <div className="mt-4 space-y-4">
-              <div>
-                <Text className="font-semibold">Reported User:</Text>
-                <Text>{selectedReport.reportedUserName}</Text>
+              <div className="p-3 border rounded-md bg-gray-50 dark:bg-gray-900">
+                <Text className="font-semibold text-gray-600 dark:text-gray-400">Reported User:</Text>
+                <Text className="text-lg font-medium text-gray-900 dark:text-gray-100">{selectedReport.reportedUserName || 'Unknown User'}</Text>
               </div>
-              <div>
-                <Text className="font-semibold">Reported By:</Text>
-                <Text>{selectedReport.reportedByName}</Text>
+              <div className="p-3 border rounded-md bg-gray-50 dark:bg-gray-900">
+                <Text className="font-semibold text-gray-600 dark:text-gray-400">Reported By:</Text>
+                <Text className="text-lg font-medium text-gray-900 dark:text-gray-100">{selectedReport.reportedByName || 'Unknown Reporter'}</Text>
               </div>
-              <div>
-                <Text className="font-semibold">Reason:</Text>
-                <Badge color="red">{selectedReport.reason.replace('_', ' ').toUpperCase()}</Badge>
+              <div className="p-3 border rounded-md bg-gray-50 dark:bg-gray-900">
+                <Text className="font-semibold text-gray-600 dark:text-gray-400">Reason:</Text>
+                <Badge color="red">{(selectedReport.reason || 'unknown').replace('_', ' ').toUpperCase()}</Badge>
               </div>
-              <div>
-                <Text className="font-semibold">Priority:</Text>
-                <Badge color={getPriorityColor(selectedReport.priority)}>
-                  {selectedReport.priority.toUpperCase()}
+              <div className="p-3 border rounded-md bg-gray-50 dark:bg-gray-900">
+                <Text className="font-semibold text-gray-600 dark:text-gray-400">Priority:</Text>
+                <Badge color={getPriorityColor(selectedReport.priority || 'medium')}>
+                  {(selectedReport.priority || 'medium').toUpperCase()}
                 </Badge>
               </div>
-              <div>
-                <Text className="font-semibold">Description:</Text>
-                <Text>{selectedReport.description}</Text>
+              <div className="p-3 border rounded-md bg-gray-50 dark:bg-gray-900">
+                <Text className="font-semibold text-gray-600 dark:text-gray-400">Description:</Text>
+                <Text className="text-gray-800 dark:text-gray-200">{selectedReport.description || 'No description provided'}</Text>
               </div>
-              <div>
-                <Text className="font-semibold">Admin Note:</Text>
+              <div className="p-3 border rounded-md bg-gray-50 dark:bg-gray-900">
+                <Text className="font-semibold text-gray-600 dark:text-gray-400">Admin Note:</Text>
                 <Textarea
                   value={reportNote}
                   onChange={(e) => setReportNote(e.target.value)}
@@ -423,8 +444,8 @@ const AdminReportsPage: React.FC = () => {
                 />
               </div>
               {selectedReport.priority === 'high' || selectedReport.priority === 'urgent' ? (
-                <div>
-                  <Text className="font-semibold">Suspension Duration (days):</Text>
+                <div className="p-3 border rounded-md bg-yellow-50 dark:bg-yellow-900/20">
+                  <Text className="font-semibold text-yellow-800 dark:text-yellow-200">Suspension Duration (days):</Text>
                   <input
                     type="number"
                     value={suspendDuration}
@@ -483,21 +504,21 @@ const AdminReportsPage: React.FC = () => {
             <div className="mt-4 space-y-4">
               <div>
                 <Text className="font-semibold">Sender:</Text>
-                <Text>{selectedMessageReport.senderName}</Text>
+                <Text>{selectedMessageReport.senderName || 'Unknown Sender'}</Text>
               </div>
               <div>
                 <Text className="font-semibold">Reported By:</Text>
-                <Text>{selectedMessageReport.reportedByName}</Text>
+                <Text>{selectedMessageReport.reportedByName || 'Unknown Reporter'}</Text>
               </div>
               <div>
                 <Text className="font-semibold">Message Content:</Text>
                 <div className="mt-2 p-3 bg-gray-100 rounded-md border">
-                  <Text>{selectedMessageReport.content}</Text>
+                  <Text>{selectedMessageReport.content || 'No content available'}</Text>
                 </div>
               </div>
               <div>
                 <Text className="font-semibold">Reason:</Text>
-                <Badge color="red">{selectedMessageReport.reason}</Badge>
+                <Badge color="red">{selectedMessageReport.reason || 'unknown'}</Badge>
               </div>
               <div>
                 <Text className="font-semibold">Admin Note:</Text>

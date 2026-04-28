@@ -4,16 +4,43 @@ import { User } from '../types';
 import { useAuthStore } from './authStore';
 
 interface LikesState {
+  likedUserIds: Set<string>; // <-- NEW: For quick lookups
   usersWhoLikedMe: (User & { liked_at?: string })[];
   hasNewLikes: boolean;
+  fetchLikedUserIds: () => Promise<void>; // <-- NEW
   fetchUsersWhoLikedMe: () => Promise<void>;
+  addLikedUser: (userId: string) => void; // <-- NEW
   removeLike: (likerId: string) => Promise<void>;
   markLikesAsViewed: () => void;
+  listenForNewLikes: () => () => void;
 }
 
-export const useLikesStore = create<LikesState>((set) => ({
+export const useLikesStore = create<LikesState>((set, get) => ({
+  likedUserIds: new Set(),
   usersWhoLikedMe: [],
   hasNewLikes: false,
+
+  fetchLikedUserIds: async () => {
+    const user = useAuthStore.getState().user;
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('likes')
+      .select('liked_id')
+      .eq('liker_id', user.id);
+
+    if (error) {
+      console.error('Error fetching liked user IDs:', error);
+      return;
+    }
+
+    const ids = new Set(data.map(like => like.liked_id));
+    set({ likedUserIds: ids });
+  },
+
+  addLikedUser: (userId: string) => {
+    set(state => ({ likedUserIds: new Set(state.likedUserIds).add(userId) }));
+  },
 
   fetchUsersWhoLikedMe: async () => {
     const currentUser = useAuthStore.getState().user;
@@ -78,4 +105,38 @@ export const useLikesStore = create<LikesState>((set) => ({
   },
 
   markLikesAsViewed: () => set({ hasNewLikes: false }),
+
+  listenForNewLikes: () => {
+    const channel = supabase
+      .channel('new-likes-listener')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `type=eq.new_like` },
+        (payload) => {
+          console.log('New like notification received!', payload);
+          // Refetch users who liked me to update the list
+          get().fetchUsersWhoLikedMe();
+          set({ hasNewLikes: true });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `type=eq.system` },
+        (payload) => {
+          console.log('System notification received!', payload);
+          // Check if this is a strike notification by looking for keywords in the message
+          const message = payload.new.message as string;
+          if (message && (message.includes('strike') || message.includes('flagged'))) {
+            console.log('Strike notification detected, refreshing like lists...');
+            // Refetch users who liked me to remove users who were unmatched due to strikes
+            get().fetchUsersWhoLikedMe();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
 }));

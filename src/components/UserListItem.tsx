@@ -18,7 +18,7 @@ const UserListItem: React.FC<UserListItemProps> = ({ user, type, onLikeBack }) =
   const { profile } = useAuthStore();
   const navigate = useNavigate();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const isPremium = profile?.accountType === 'pro' || profile?.accountType === 'vip';
+  const isPremium = profile?.account_type === 'pro' || profile?.account_type === 'vip';
   
   // Calculate age from dob if user.age is missing
   const getAge = () => {
@@ -113,7 +113,7 @@ const UserListItem: React.FC<UserListItemProps> = ({ user, type, onLikeBack }) =
                   {type === 'view' ? 'Someone is stalking you' : 'Someone liked you'}
                 </h3>
                 <p className="text-sm text-white/60">
-                  Upgrade to {profile?.accountType === 'free' ? 'Pro or VIP' : 'see who'}
+                  Upgrade to {profile?.account_type === 'free' ? 'Pro or VIP' : 'see who'}
                 </p>
               </div>
             ) : (
@@ -156,7 +156,7 @@ const UserListItem: React.FC<UserListItemProps> = ({ user, type, onLikeBack }) =
           {type === 'like' && canViewProfile && (
             <button
               onClick={handleLikeBack}
-              className={`${(useAuthStore.getState().profile as any)?.accountType === 'vip' ? 'bg-amber-400 hover:bg-amber-500 text-black' : ((useAuthStore.getState().profile as any)?.accountType === 'pro' ? 'bg-[#ff7f50] hover:bg-[#ff5e57] text-white' : 'bg-pink-500 hover:bg-pink-600 text-white')} px-4 py-2 rounded-full text-sm font-medium transition-colors`}
+              className={`${(useAuthStore.getState().profile as any)?.account_type === 'vip' ? 'bg-amber-400 hover:bg-amber-500 text-black' : ((useAuthStore.getState().profile as any)?.account_type === 'pro' ? 'bg-cyan-400 hover:bg-cyan-500 text-white' : 'bg-pink-500 hover:bg-pink-600 text-white')} px-4 py-2 rounded-full text-sm font-medium transition-colors`}
             >Like Back</button>
           )}
         </div>

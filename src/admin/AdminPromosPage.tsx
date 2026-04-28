@@ -39,9 +39,7 @@ const AdminPromosPage: React.FC = () => {
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; promo: PromoCode | null }>({ isOpen: false, promo: null });
   const [newPromo, setNewPromo] = useState<Partial<PromoCode>>({
     type: 'message_requests',
-    maxUses: 100,
     durationDays: null,
-    effect: {},
   });
 
   useEffect(() => {
@@ -67,17 +65,12 @@ const AdminPromosPage: React.FC = () => {
       if (!newPromo.code) {
         newPromo.code = generateRandomCode();
       }
-      const promoToCreate = { ...newPromo };
-      if (promoToCreate.durationDays !== undefined && promoToCreate.durationDays !== null && promoToCreate.durationDays !== '') {
-        const expires_at = new Date();
-        expires_at.setTime(expires_at.getTime() + (promoToCreate.durationDays * 24 * 60 * 60 * 1000));
-        (promoToCreate as any).expiresAt = expires_at.toISOString();
-      }
+      const promoToCreate = { ...newPromo, durationDays: newPromo.durationDays || 30 }; // Add default value
 
       await promoService.createPromoCode(promoToCreate);
       toast.success('Promo code created successfully');
       setIsDialogOpen(false);
-      setNewPromo({ type: 'message_requests', maxUses: 100, durationDays: null, effect: {} });
+      setNewPromo({ type: 'message_requests', maxUses: 100, durationDays: null });
       loadPromos();
     } catch (error) {
       toast.error('Failed to create promo code');
@@ -93,9 +86,7 @@ const AdminPromosPage: React.FC = () => {
     setNewPromo(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleEffectChange = (key: string, value: any) => {
-    setNewPromo(prev => ({ ...prev, effect: { ...prev.effect, [key]: value } }));
-  };
+
 
   const handleDeleteClick = (promo: PromoCode) => {
     setDeleteModal({ isOpen: true, promo });
@@ -150,7 +141,7 @@ const AdminPromosPage: React.FC = () => {
                       <TableCell><Badge color="blue">{promo.code}</Badge></TableCell>
                       <TableCell>{promo.type.replace('_', ' ')}</TableCell>
                       <TableCell>{promo.timesUsed} / {promo.maxUses ?? '∞'}</TableCell>
-                      <TableCell>{new Date(promo.expiresAt).toLocaleDateString()}</TableCell>
+                      <TableCell>{promo.expiresAt ? new Date(promo.expiresAt).toLocaleDateString() : 'No expiry'}</TableCell>
                       <TableCell>
                         <Button
                           size="xs"
@@ -186,7 +177,7 @@ const AdminPromosPage: React.FC = () => {
                       <TableCell><Badge>{promo.code}</Badge></TableCell>
                       <TableCell>{promo.type.replace('_', ' ')}</TableCell>
                       <TableCell>{promo.timesUsed} / {promo.maxUses ?? '∞'}</TableCell>
-                      <TableCell>{new Date(promo.expiresAt).toLocaleDateString()}</TableCell>
+                      <TableCell>{promo.expiresAt ? new Date(promo.expiresAt).toLocaleDateString() : 'No expiry'}</TableCell>
                       <TableCell>
                         <Button
                           size="xs"
@@ -247,52 +238,8 @@ const AdminPromosPage: React.FC = () => {
                     <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                   </div>
                 </div>
-                {newPromo.type === 'message_requests' && (
-                  <div className="flex items-center space-x-2">
-                    <NumberInput
-                      placeholder="Number of requests"
-                      onValueChange={(value) => handleEffectChange('count', value)}
-                    />
-                    <Tooltip content="The total number of message requests this promo code will grant.">
-                  <InformationCircleIcon className="h-5 w-5 text-white/60" />
-                </Tooltip>
-                  </div>
-                )}
-                {newPromo.type === 'limited_swipes' && (
-                  <div className="flex items-center space-x-2">
-                    <NumberInput
-                      placeholder="Number of swipes (20-100)"
-                      min={20}
-                      max={100}
-                      onValueChange={(value) => handleEffectChange('count', value)}
-                    />
-                    <Tooltip content="The number of swipes this promo code will grant (between 20 and 100).">
-                  <InformationCircleIcon className="h-5 w-5 text-white/60" />
-                </Tooltip>
-                  </div>
-                )}
-                {newPromo.type === 'profile_views' && (
-                  <div className="flex items-center space-x-2">
-                    <NumberInput
-                      placeholder="Number of days to view profiles"
-                      min={1}
-                      onValueChange={(value) => handleEffectChange('days', value)}
-                    />
-                    <Tooltip content="The number of days the user can view profiles with this promo.">
-                  <InformationCircleIcon className="h-5 w-5 text-white/60" />
-                </Tooltip>
-                  </div>
-                )}
-                <div className="flex items-center space-x-2">
-                  <NumberInput 
-                    placeholder="Max uses (optional)"
-                    value={newPromo.maxUses || ''}
-                    onValueChange={(value) => handleInputChange('maxUses', value)}
-                  />
-                  <Tooltip content="The maximum number of times this promo code can be used by all users. Leave blank for unlimited uses.">
-                  <InformationCircleIcon className="h-5 w-5 text-white/60" />
-                </Tooltip>
-                </div>
+
+
                 <div className="relative">
                   <select
                     className="w-full appearance-none bg-[#3a1a22] border border-white/20 rounded-md py-2 px-3 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import { useAuthStore } from './stores/authStore';
+import { wordFilterService } from './services/wordFilterService';
 import { useAppSettingsStore } from './stores/appSettingsStore';
 import { useMatchStore } from './stores/matchStore.tsx';
 import { useNotificationStore } from './stores/notificationStore';
@@ -38,24 +39,41 @@ import SystemMessenger from './admin/SystemMessenger';
 import AdminConnectionsPage from './admin/AdminConnectionsPage';
 import BlockedPage from './pages/BlockedPage';
 import AppealPage from './pages/AppealPage';
+import CommunityGuidelines from './pages/CommunityGuidelines';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import OfflineNotifier from './components/common/OfflineNotifier';
 import './index.css';
 
 import RouteGuard from './RouteGuard';
+import ProtectedRoute from './components/ProtectedRoute';
 
 import usePresenceStore from './stores/presenceStore';
 import i18n from 'i18next';
 import './lib/i18n';
 
+import { resetAllStores } from './stores/reset';
+
+import { useLikeStore } from './stores/likeStore';
+
 function App() {
-  const { checkUser, user } = useAuthStore();
+  const { checkUser, user, loading } = useAuthStore(); // Use loading state
   const { getSettings } = useAppSettingsStore();
-  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    checkUser();
+    const initializeApp = async () => {
+      await checkUser();
+      // Only load filtered words after auth is complete to avoid race conditions
+      wordFilterService.loadFilteredWords();
+    };
     
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    initializeApp();
+    
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        resetAllStores();
+      } else if (session) {
+        useAuthStore.getState().setSession(session);
+      }
       checkUser();
     });
 
@@ -65,17 +83,67 @@ function App() {
   }, [checkUser]);
 
   useEffect(() => {
-    if (user) {
-      getSettings();
-      useNotificationStore.getState().fetchNotifications();
-      const unsubscribeMatches = useMatchStore.getState().initializeRealtime();
-      usePresenceStore.getState().initializePresence();
+    if (!user) return;
 
-      return () => {
-        unsubscribeMatches();
-        usePresenceStore.getState().unsubscribePresence();
-      };
+    getSettings();
+
+    const unsubscribeMatches = useMatchStore.getState().initializeRealtime?.();
+    usePresenceStore.getState().initializePresence();
+    useLikeStore.getState().fetchLikedUsers(user.id);
+
+    const store = useMatchStore.getState();
+    let profileChangesChannel: any;
+    if (typeof store.subscribeToProfileChanges === "function") {
+      profileChangesChannel = store.subscribeToProfileChanges();
     }
+
+    // Correctly subscribe to user-specific notifications
+    const notificationsChannel = supabase
+      .channel(`notifications:${user.id}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const notification = payload.new as any;
+          useNotificationStore.getState().addNotification({
+            id: notification.id,
+            type: notification.type,
+            isRead: notification.isRead || false,
+            timestamp: new Date(notification.created_at),
+            message: notification.message,
+            relatedUser: notification.relatedUser,
+            link: notification.link,
+            photo_url: notification.photo_url
+          });
+          toast.success('You have a new notification!');
+        }
+      )
+      .subscribe();
+
+    const profileUpdateChannel = supabase
+      .channel(`profile-updates:${user.id}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+        (payload) => {
+          const oldStrikes = useAuthStore.getState().profile?.strikes || 0;
+          const newStrikes = payload.new.strikes;
+          if (newStrikes > oldStrikes) {
+            toast.error('You have received a new strike!', { icon: '⚠️' });
+          }
+          // Re-fetch user profile to get all latest data
+          useAuthStore.getState().checkUser();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      unsubscribeMatches?.();
+      usePresenceStore.getState().unsubscribePresence();
+      if (profileChangesChannel) {
+        supabase.removeChannel(profileChangesChannel);
+      }
+      supabase.removeChannel(notificationsChannel);
+      supabase.removeChannel(profileUpdateChannel);
+    };
   }, [user, getSettings]);
 
   useEffect(() => {
@@ -103,56 +171,56 @@ function App() {
     } catch {}
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 5000);
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
     <Router>
-      <SplashScreen visible={showSplash} />
+      <SplashScreen visible={loading} />
       <OfflineNotifier />
-      <RouteGuard>
-        <div className={`min-h-screen`}>
-          <AppRoutes />
-          <Toaster position="top-center" />
-        </div>
-      </RouteGuard>
+      {!loading && (
+        <RouteGuard>
+          <div className={`min-h-screen`}>
+            <AppRoutes />
+            <Toaster position="top-center" />
+          </div>
+        </RouteGuard>
+      )}
     </Router>
   );
 }
 
 const AppRoutes = () => {
-    const { session, isAdmin } = useAuthStore();
+  const { isAdmin } = useAuthStore();
 
-    if (session) {
-      if (isAdmin) {
-        return (
-          <Routes>
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route path="dashboard" element={<AdminDashboard />} />
-              <Route path="users" element={<AdminUsersPage />} />
-              <Route path="promos" element={<AdminPromosPage />} />
-              <Route path="reports" element={<AdminReportsPage />} />
-              <Route path="word-filter" element={<WordFilterManagement />} />
-              <Route path="system-messenger" element={<SystemMessenger />} />
-              <Route path="gifs" element={<AdminGifsPage />} />
-              <Route path="connections" element={<AdminConnectionsPage />} />
-              <Route path="dormant" element={<AdminDormantAccountsPage />} />
-              <Route path="settings" element={<AdminSettingsPage />} />
-              <Route index element={<Navigate to="dashboard" replace />} />
-            </Route>
-            <Route path="/profile" element={
-              <Layout>
-                <ProfilePage />
-              </Layout>
-            } />
-            <Route path="/*" element={<Navigate to="/admin/dashboard" replace />} />
-          </Routes>
-        );
-      } else {
-        return (
-          <Routes>
+  return (
+    <Routes>
+      {/* Unprotected Routes */}
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route path="/signup" element={<SignUpPage />} />
+      <Route path="/callback" element={<CallbackPage />} />
+      <Route path="/admin-login" element={<AdminLoginPage />} />
+      <Route path="/appeal" element={<AppealPage />} />
+      <Route path="/blocked" element={<BlockedPage />} />
+      <Route path="/community-guidelines" element={<CommunityGuidelines />} />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
+
+      {/* Protected Routes */}
+      <Route element={<ProtectedRoute />}>
+        {isAdmin ? (
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="promos" element={<AdminPromosPage />} />
+            <Route path="reports" element={<AdminReportsPage />} />
+            <Route path="word-filter" element={<WordFilterManagement />} />
+            <Route path="system-messenger" element={<SystemMessenger />} />
+            <Route path="gifs" element={<AdminGifsPage />} />
+            <Route path="connections" element={<AdminConnectionsPage />} />
+            <Route path="dormant" element={<AdminDormantAccountsPage />} />
+            <Route path="settings" element={<AdminSettingsPage />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
+          </Route>
+        ) : (
+          <>
             <Route path="/chat/:matchId" element={<ChatConversationPage />} />
             <Route path="/create-profile" element={<CreateProfilePage />} />
             <Route path="/*" element={
@@ -170,24 +238,14 @@ const AppRoutes = () => {
                 </Routes>
               </Layout>
             } />
-          </Routes>
-        );
-      }
-    } else {
-      // Not authenticated
-      return (
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignUpPage />} />
+          </>
+        )}
+      </Route>
 
-          <Route path="/callback" element={<CallbackPage />} />
-          <Route path="/admin-login" element={<AdminLoginPage />} /> {/* Admin specific login route */}
-          <Route path="/appeal" element={<AppealPage />} />
-          <Route path="/blocked" element={<BlockedPage />} />
-          <Route path="/*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      );
-    }
-  };
+      {/* Fallback Route */}
+      <Route path="/*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+};
 
 export default App;

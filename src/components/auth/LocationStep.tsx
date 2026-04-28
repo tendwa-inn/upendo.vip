@@ -11,12 +11,26 @@ const LocationStep: React.FC = () => {
   const handleLocation = () => {
     setIsLoading(true);
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        // In a real app, you would use a reverse geocoding API to get the city
-        updateFormData({ location: { latitude, longitude, city: 'Lusaka' } });
-        toast.success('Location captured!');
-        nextStep();
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          
+          // Reverse geocoding to get actual city name
+          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await response.json();
+          
+          const city = data.address?.city || data.address?.town || data.address?.village || 
+                      data.address?.county || data.address?.state || 'Unknown location';
+          
+          updateFormData({ location: { latitude, longitude, city } });
+          toast.success(`Location captured: ${city}`);
+          nextStep();
+        } catch (error) {
+          console.error('Reverse geocoding failed:', error);
+          updateFormData({ location: { latitude: position.coords.latitude, longitude: position.coords.longitude, city: 'Your location' } });
+          toast.success('Location captured!');
+          nextStep();
+        }
       },
       (error) => {
         toast.error('Could not get location. Please enable it in your browser.');

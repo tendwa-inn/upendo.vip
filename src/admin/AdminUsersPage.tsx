@@ -15,8 +15,11 @@ interface User {
 const AdminUsersPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [paginatedUsers, setPaginatedUsers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [accountTypes, setAccountTypes] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   useEffect(() => {
     fetchUsers();
@@ -38,7 +41,14 @@ const AdminUsersPage: React.FC = () => {
     }
 
     setFilteredUsers(newFilteredUsers);
+    setCurrentPage(1); // Reset to first page when filters change
   }, [users, searchTerm, accountTypes]);
+
+  useEffect(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    setPaginatedUsers(filteredUsers.slice(startIndex, endIndex));
+  }, [filteredUsers, currentPage]);
 
   const fetchUsers = async () => {
     const allUsers = await profileService.getAllProfiles();
@@ -71,6 +81,20 @@ const AdminUsersPage: React.FC = () => {
       age--;
     }
     return age;
+  };
+
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
   };
 
   return (
@@ -106,7 +130,7 @@ const AdminUsersPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredUsers.map(user => (
+            {paginatedUsers.map(user => (
               <TableRow key={user.id}>
                 <TableCell>
                   <img src={user.photos[0] || '/logo-splash.png'} alt={user.name} className="w-12 h-12 rounded-full object-cover" />
@@ -126,6 +150,29 @@ const AdminUsersPage: React.FC = () => {
             ))}
           </TableBody>
         </Table>
+        {totalPages > 1 && (
+          <div className="flex justify-between items-center mt-4">
+            <Button
+              onClick={handlePrevPage}
+              disabled={currentPage === 1}
+              variant="secondary"
+              size="sm"
+            >
+              Back
+            </Button>
+            <span className="text-sm text-gray-600">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages}
+              variant="secondary"
+              size="sm"
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   );

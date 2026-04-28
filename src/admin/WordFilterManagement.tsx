@@ -6,14 +6,20 @@ import { wordFilterService } from '../services/wordFilterService';
 import toast from 'react-hot-toast';
 
 const WordFilterManagement: React.FC = () => {
-  const [filteredWords, setFilteredWords] = useState<Array<{id: number, word: string, created_at: string, word_actions: any[]}>>([]);
+  const [filteredWords, setFilteredWords] = useState<Array<any>>([]);
   const [flaggedUsers, setFlaggedUsers] = useState<Array<any>>([]);
+  const [userActions, setUserActions] = useState<Array<any>>([]);
   const [newWord, setNewWord] = useState('');
+  const [batchWords, setBatchWords] = useState<string[]>([]);
+  const [batchAction, setBatchAction] = useState<'warning' | 'suspension' | 'ban'>('warning');
+  const [isBatchMode, setIsBatchMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedWord, setSelectedWord] = useState<any>(null);
   const [selectedAction, setSelectedAction] = useState<'warning' | 'suspension' | 'ban'>('warning');
   const [suspensionDays, setSuspensionDays] = useState<number>(7);
+  const [currentPage, setCurrentPage] = useState(1);
+  const wordsPerPage = 5;
 
   useEffect(() => {
     loadData();
@@ -22,12 +28,18 @@ const WordFilterManagement: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [words, flagged] = await Promise.all([
-        wordFilterService.getFilteredWords(),
-        wordFilterService.getFlaggedContent()
+      console.log('Loading word filter data...');
+      const [words, flagged, actions] = await Promise.all([
+        wordFilterService.getFilteredWordsWithActions(),
+        wordFilterService.getFlaggedContent(),
+        wordFilterService.getUserActions()
       ]);
+      console.log('Words loaded:', words);
+      console.log('Flagged content loaded:', flagged);
+      console.log('User actions loaded:', actions);
       setFilteredWords(words || []);
       setFlaggedUsers(flagged || []);
+      setUserActions(actions || []);
     } catch (error) {
       toast.error('Failed to load data');
       console.error('Error loading data:', error);
@@ -36,12 +48,46 @@ const WordFilterManagement: React.FC = () => {
     }
   };
 
+  const addWordToBatch = () => {
+    if (newWord && !batchWords.includes(newWord)) {
+      setBatchWords([...batchWords, newWord]);
+      setNewWord('');
+    }
+  };
+
+  const removeWordFromBatch = (wordToRemove: string) => {
+    setBatchWords(batchWords.filter(word => word !== wordToRemove));
+  };
+
+  const handleBatchAdd = async () => {
+    if (batchWords.length === 0) return;
+
+    try {
+      await Promise.all(batchWords.map(word => 
+        wordFilterService.addWordWithAction(
+          word,
+          batchAction,
+          batchAction === 'suspension' ? suspensionDays : null
+        )
+      ));
+      
+      toast.success('Batch of words added successfully');
+      setBatchWords([]);
+      setNewWord(''); // Clear input field after batch add
+      await loadData();
+    } catch (error) {
+      toast.error('Failed to add batch of words');
+      console.error('Error adding batch:', error);
+    }
+  };
+
   const openSetActionModal = (word: any) => {
     setSelectedWord(word);
-    if (word.word_actions && word.word_actions.length > 0) {
-      setSelectedAction(word.word_actions[0].action_type);
-      if (word.word_actions[0].duration_days) {
-        setSuspensionDays(word.word_actions[0].duration_days);
+    const action = Array.isArray(word.word_actions) ? word.word_actions[0] : word.word_actions;
+    if (action) {
+      setSelectedAction(action.action_type);
+      if (action.duration_days) {
+        setSuspensionDays(action.duration_days);
       }
     } else {
       setSelectedAction('warning');
@@ -71,10 +117,11 @@ const WordFilterManagement: React.FC = () => {
   const handleAddWord = async () => {
     if (newWord && !filteredWords.some(w => w.word === newWord)) {
       try {
-        await wordFilterService.addFilteredWord(newWord);
+        // Default action for single word is 'warning' unless changed
+        await wordFilterService.addWordWithAction(newWord, 'warning', null);
         await loadData();
         setNewWord('');
-        toast.success('Word added to filter');
+        toast.success('Word added to filter with default action (warning).');
       } catch (error) {
         toast.error('Failed to add word');
         console.error('Error adding word:', error);
@@ -128,6 +175,25 @@ const WordFilterManagement: React.FC = () => {
     }
   };
 
+  // Pagination logic
+  const indexOfLastWord = currentPage * wordsPerPage;
+  const indexOfFirstWord = indexOfLastWord - wordsPerPage;
+  const currentWords = filteredWords.slice(indexOfFirstWord, indexOfLastWord);
+
+  const totalPages = Math.ceil(filteredWords.length / wordsPerPage);
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
   return (
     <div>
       <h1 className="text-3xl font-bold mb-6">Word Filter Management</h1>
@@ -137,82 +203,226 @@ const WordFilterManagement: React.FC = () => {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
         </div>
       ) : (
-        <Grid numItemsLg={2} className="gap-6">
-          <Col>
-            <Card>
-              <Title>Filtered Words</Title>
-              <div className="flex mt-4">
-                <input
-                  type="text"
-                  value={newWord}
-                  onChange={(e) => setNewWord(e.target.value)}
-                  className="flex-grow p-2 border rounded-l-md bg-gray-800 text-white"
-                  placeholder="Add a new word to filter"
-                />
-                <Button onClick={handleAddWord} className="rounded-l-none">Add Word</Button>
-              </div>
-              <Table className="mt-6">
-                <TableHead>
-                  <TableRow>
-                    <TableHeaderCell>Word</TableHeaderCell>
-                    <TableHeaderCell>Automatic Action</TableHeaderCell>
-                    <TableHeaderCell>Action</TableHeaderCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredWords.map((word) => (
-                    <TableRow key={word.id}>
-                      <TableCell>{word.word}</TableCell>
-                      <TableCell>
-                        {word.word_actions && word.word_actions.length > 0
-                          ? `${word.word_actions[0].action_type}${word.word_actions[0].duration_days ? ` (${word.word_actions[0].duration_days} days)` : ''}`
-                          : 'None'}
-                      </TableCell>
-                      <TableCell>
-                        <Button onClick={() => openSetActionModal(word)} size="xs" variant="secondary">Set Action</Button>
-                        <Button onClick={() => handleRemoveWord(word.id)} size="xs" variant="secondary" color="red">Remove</Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          </Col>
-
-          <Col>
-            <Card>
-              <Title>Flagged Users</Title>
-              <Table className="mt-6">
-                <TableHead>
-                  <TableRow>
-                    <TableHeaderCell>User</TableHeaderCell>
-                    <TableHeaderCell>Flagged Content</TableHeaderCell>
-                    <TableHeaderCell>Word</TableHeaderCell>
-                    <TableHeaderCell>Actions</TableHeaderCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {flaggedUsers.map((flagged) => (
-                    <TableRow key={flagged.id}>
-                      <TableCell>{flagged.user?.name || 'Unknown User'}</TableCell>
-                      <TableCell className="max-w-xs truncate">{flagged.content}</TableCell>
-                      <TableCell>
-                        <Badge color="red" icon={AlertTriangle}>{flagged.word?.word}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button onClick={() => handleUserAction(flagged.user_id, 'warning', undefined, flagged.word?.word)} size="xs">Warn</Button>
-                          <Button onClick={() => handleUserAction(flagged.user_id, 'suspension', 'Repeated inappropriate content', flagged.word?.word)} size="xs">Suspend</Button>
-                          <Button onClick={() => handleUserAction(flagged.user_id, 'ban', 'Severe violation', flagged.word?.word)} size="xs" color="red">Ban</Button>
+        <>
+          <Grid numItemsLg={2} className="gap-6">
+            <Col>
+              <Card>
+                <Title>Filtered Words</Title>
+                <div className="flex mt-4">
+                  <input
+                    type="text"
+                    value={newWord}
+                    onChange={(e) => setNewWord(e.target.value)}
+                    className="flex-grow p-2 border rounded-l-md bg-gray-800 text-white"
+                    placeholder="Add a new word to filter"
+                  />
+                  <Button onClick={handleAddWord} className="rounded-l-none">Add Word</Button>
+                  <Button onClick={() => setIsBatchMode(!isBatchMode)} className="ml-2">Batch</Button>
+                </div>
+                {isBatchMode && (
+                  <div className="mt-4 p-4 border rounded-md bg-gray-800/50">
+                    <Title>Batch Add Words</Title>
+                    <div className="flex mt-4">
+                      <input
+                        type="text"
+                        value={newWord}
+                        onChange={(e) => setNewWord(e.target.value)}
+                        className="flex-grow p-2 border rounded-l-md bg-gray-800 text-white"
+                        placeholder="Add a word to the batch"
+                      />
+                      <Button onClick={addWordToBatch} className="rounded-l-none">+</Button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {batchWords.map((word, index) => (
+                        <div key={index} className="relative group">
+                          <Badge color="blue">{word}</Badge>
+                          <button
+                            onClick={() => removeWordFromBatch(word)}
+                            className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            x
+                          </button>
                         </div>
-                      </TableCell>
+                      ))}
+                    </div>
+                    <div className="mt-4">
+                      <label htmlFor="batchAction" className="block text-sm font-medium text-gray-300">Action for Batch</label>
+                      <select
+                        id="batchAction"
+                        value={batchAction}
+                        onChange={(e) => setBatchAction(e.target.value as any)}
+                        className="mt-1 block w-full p-2 border rounded-md bg-gray-800 text-white"
+                      >
+                        <option value="warning">Warning</option>
+                        <option value="suspension">Suspension</option>
+                        <option value="ban">Ban</option>
+                      </select>
+                    </div>
+                    <Button onClick={handleBatchAdd} className="mt-4">Add Batch to Filter</Button>
+                  </div>
+                )}
+                <Table className="mt-6">
+                  <TableHead>
+                    <TableRow>
+                      <TableHeaderCell>Word</TableHeaderCell>
+                      <TableHeaderCell>Automatic Action</TableHeaderCell>
+                      <TableHeaderCell>Action</TableHeaderCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          </Col>
-        </Grid>
+                  </TableHead>
+                  <TableBody>
+                    {currentWords.map((word) => (
+                      <TableRow key={word.id}>
+                        <TableCell>{word.word}</TableCell>
+                        <TableCell>
+                          {(() => {
+                            const action = Array.isArray(word.word_actions) ? word.word_actions[0] : word.word_actions;
+                            return action
+                              ? `${action.action_type}${action.duration_days ? ` (${action.duration_days} days)` : ''}`
+                              : 'None';
+                          })()}
+                        </TableCell>
+                        <TableCell>
+                          <Button onClick={() => openSetActionModal(word)} size="xs" variant="secondary">Set Action</Button>
+                          <Button onClick={() => handleRemoveWord(word.id)} size="xs" variant="secondary" color="red">Remove</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="flex justify-between items-center mt-4">
+                  <Button onClick={handlePrevPage} disabled={currentPage === 1}>Back</Button>
+                  <Text>Page {currentPage} of {totalPages}</Text>
+                  <Button onClick={handleNextPage} disabled={currentPage === totalPages}>Next</Button>
+                </div>
+              </Card>
+            </Col>
+
+            <Col>
+              <Card>
+                <Title>Flagged Users</Title>
+                <Table className="mt-6">
+                  <TableHead>
+                    <TableRow>
+                      <TableHeaderCell>User</TableHeaderCell>
+                      <TableHeaderCell>Flagged Content</TableHeaderCell>
+                      <TableHeaderCell>Word</TableHeaderCell>
+                      <TableHeaderCell>Actions</TableHeaderCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {flaggedUsers.map((flagged) => (
+                      <TableRow key={flagged.id}>
+                        <TableCell>{flagged.user?.name || 'Unknown User'}</TableCell>
+                        <TableCell className="max-w-xs truncate">{flagged.content}</TableCell>
+                        <TableCell>
+                          <Badge color="red" icon={AlertTriangle}>{flagged.word?.word}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            <Button onClick={() => handleUserAction(flagged.user_id, 'warning', `Warning for using word "${flagged.word?.word}"`, flagged.word?.word)} size="xs">Warn</Button>
+                            <Button onClick={() => handleUserAction(flagged.user_id, 'suspension', 'Repeated inappropriate content', flagged.word?.word)} size="xs">Suspend</Button>
+                            <Button onClick={() => handleUserAction(flagged.user_id, 'ban', 'Severe violation', flagged.word?.word)} size="xs" color="red">Ban</Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            </Col>
+          </Grid>
+
+          {/* User Actions with Appeals */}
+          <Grid numItemsLg={1} className="gap-6 mt-6">
+            <Col>
+              <Card>
+                <Title>User Actions & Appeals</Title>
+                <Table className="mt-6">
+                  <TableHead>
+                    <TableRow>
+                      <TableHeaderCell>User</TableHeaderCell>
+                      <TableHeaderCell>Action Type</TableHeaderCell>
+                      <TableHeaderCell>Reason</TableHeaderCell>
+                      <TableHeaderCell>Admin</TableHeaderCell>
+                      <TableHeaderCell>Created</TableHeaderCell>
+                      <TableHeaderCell>Expires</TableHeaderCell>
+                      <TableHeaderCell>Status</TableHeaderCell>
+                      <TableHeaderCell>Appeal</TableHeaderCell>
+                      <TableHeaderCell>Actions</TableHeaderCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {userActions.map((action) => (
+                      <TableRow key={action.id}>
+                        <TableCell>{action.user?.name || 'Unknown User'}</TableCell>
+                        <TableCell>
+                          <Badge color={action.action_type === 'ban' ? 'red' : action.action_type === 'suspension' ? 'yellow' : 'blue'}>
+                            {action.action_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate">{action.reason || 'No reason provided'}</TableCell>
+                        <TableCell>{action.admin?.name || 'System'}</TableCell>
+                        <TableCell>{new Date(action.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell>{action.expires_at ? new Date(action.expires_at).toLocaleDateString() : 'Never'}</TableCell>
+                        <TableCell>
+                          <Badge color={action.status === 'appealed' ? 'orange' : 'green'}>
+                            {action.status || 'active'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate">{action.appeal_reason || 'No appeal'}</TableCell>
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            {action.action_type === 'suspension' && action.status === 'active' && (
+                              <Button 
+                                onClick={() => {
+                                  const appealReason = prompt('Enter appeal reason:');
+                                  if (appealReason) {
+                                    wordFilterService.handleAppeal(action.id, appealReason)
+                                      .then(() => {
+                                        toast.success('Appeal submitted');
+                                        loadData();
+                                      })
+                                      .catch((error) => {
+                                        toast.error('Failed to submit appeal');
+                                        console.error('Error submitting appeal:', error);
+                                      });
+                                  }
+                                }} 
+                                size="xs" 
+                                variant="secondary"
+                              >
+                                Appeal
+                              </Button>
+                            )}
+                            <Button 
+                              onClick={() => {
+                                if (confirm('Are you sure you want to lift this action?')) {
+                                  wordFilterService.takeUserAction(action.user_id, 'warning', 'Action lifted by admin', null, 'Action lifted')
+                                    .then(() => {
+                                      toast.success('Action lifted');
+                                      loadData();
+                                    })
+                                    .catch((error) => {
+                                      toast.error('Failed to lift action');
+                                      console.error('Error lifting action:', error);
+                                    });
+                                }
+                              }} 
+                              size="xs" 
+                              color="green"
+                            >
+                              Lift
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            </Col>
+          </Grid>
+        </>
       )}
 
       {isModalOpen && selectedWord && (

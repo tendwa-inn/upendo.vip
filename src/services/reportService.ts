@@ -1,288 +1,314 @@
-import { supabase } from '../utils/supabase';
-import { UserReport } from '../types/admin';
+import { supabase } from '../lib/supabaseClient';
 
 export interface UserAppeal {
   id: string;
-  userId: string;
   userName: string;
-  actionType: 'warning' | 'suspension' | 'ban';
+  actionType: string;
   reason: string;
   appealReason: string;
-  createdAt: Date;
-  status: 'pending' | 'approved' | 'denied';
-  expiresAt?: Date;
+  createdAt: string;
+  expiresAt?: string;
+  status: string;
 }
 
 export interface ReportedAccount {
   id: string;
-  reportedUserId: string;
   reportedUserName: string;
-  reportedBy: string;
   reportedByName: string;
-  reason: 'profanity' | 'porn' | 'inappropriate_behavior' | 'harassment' | 'fake_profile' | 'spam' | 'other';
+  reason: string;
+  priority: string;
+  status: string;
   description: string;
-  status: 'pending' | 'under_review' | 'resolved' | 'dismissed';
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  createdAt: Date;
-  evidence?: string[];
+  createdAt: string;
 }
 
 export interface ReportedMessage {
   id: string;
-  messageId: string;
-  senderId: string;
   senderName: string;
-  reportedBy: string;
   reportedByName: string;
   content: string;
   reason: string;
-  status: 'pending' | 'reviewed' | 'action_taken' | 'dismissed';
-  createdAt: Date;
-  matchId?: string;
+  status: string;
+  createdAt: string;
 }
 
 export const reportService = {
-  // Get all pending user appeals
+  async createUserReport(reporterId: string, reportedId: string, reason: string, description: string) {
+    console.log('Creating user report with:', { reporterId, reportedId, reason, description });
+    const { data, error } = await supabase
+      .from('user_reports')
+      .insert([{ 
+        reported_by: reporterId, 
+        reported_user_id: reportedId, 
+        reason,
+        description,
+        status: 'pending',
+        priority: 'medium'
+      }]);
+
+    if (error) {
+      console.error('Error creating user report:', error);
+      throw error;
+    }
+
+    console.log('Successfully created user report:', data);
+    return data;
+  },
+
   async getUserAppeals(): Promise<UserAppeal[]> {
-    const { data, error } = await supabase
-      .from('user_actions')
-      .select(`
-        *,
-        user:profiles!user_actions_user_id_fkey(id, name),
-        admin:profiles!user_actions_admin_id_fkey(id, name)
-      `)
-      .eq('status', 'appealed')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    
-    return data?.map(action => ({
-      id: action.id,
-      userId: action.user_id,
-      userName: action.user?.name || 'Unknown User',
-      actionType: action.action_type,
-      reason: action.reason,
-      appealReason: action.appeal_reason,
-      createdAt: new Date(action.created_at),
-      status: 'pending',
-      expiresAt: action.expires_at ? new Date(action.expires_at) : undefined
-    })) || [];
+    // For now, return empty array since we don't have appeals table
+    // This can be implemented later when appeals functionality is added
+    return [];
   },
 
-  // Get all reported accounts
   async getReportedAccounts(): Promise<ReportedAccount[]> {
-    const { data, error } = await supabase
-      .from('user_reports')
-      .select(`
-        *,
-        reported_user:profiles!user_reports_reported_user_id_fkey(id, name),
-        reported_by:profiles!user_reports_reported_by_fkey(id, name)
-      `)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    
-    return data?.map(report => ({
-      id: report.id,
-      reportedUserId: report.reported_user_id,
-      reportedUserName: report.reported_user?.name || 'Unknown User',
-      reportedBy: report.reported_by,
-      reportedByName: report.reported_by?.name || 'Unknown User',
-      reason: report.reason,
-      description: report.description,
-      status: report.status,
-      priority: report.priority,
-      createdAt: new Date(report.created_at),
-      evidence: report.evidence
-    })) || [];
-  },
-
-  // Get all reported messages
-  async getReportedMessages(): Promise<ReportedMessage[]> {
-    const { data, error } = await supabase
-      .from('message_reports')
-      .select(`
-        *,
-        message:messages(id, content, sender_id),
-        sender:profiles!message_reports_sender_id_fkey(id, name),
-        reported_by:profiles!message_reports_reported_by_fkey(id, name)
-      `)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    
-    return data?.map(report => ({
-      id: report.id,
-      messageId: report.message_id,
-      senderId: report.sender_id,
-      senderName: report.sender?.name || 'Unknown User',
-      reportedBy: report.reported_by,
-      reportedByName: report.reported_by?.name || 'Unknown User',
-      content: report.message?.content || 'Message not found',
-      reason: report.reason,
-      status: report.status,
-      createdAt: new Date(report.created_at),
-      matchId: report.match_id
-    })) || [];
-  },
-
-  // Process user appeal (approve or deny)
-  async processAppeal(actionId: string, approve: boolean, adminNote?: string): Promise<void> {
-    const newStatus = approve ? 'approved' : 'denied';
-    
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Admin user not authenticated');
-
-    // Update the action status
-    const { error: updateError } = await supabase
-      .from('user_actions')
-      .update({ 
-        status: newStatus,
-        admin_note: adminNote,
-        reviewed_by: user.id,
-        reviewed_at: new Date().toISOString()
-      })
-      .eq('id', actionId);
-
-    if (updateError) throw updateError;
-
-    // If appeal is approved, remove the action (reinstate user)
-    if (approve) {
-      const { error: deleteError } = await supabase
-        .from('user_actions')
-        .delete()
-        .eq('id', actionId);
-
-      if (deleteError) throw deleteError;
-    }
-
-    // Send notification to user
-    await this.sendAppealNotification(actionId, newStatus);
-  },
-
-  // Process reported account
-  async processReportedAccount(reportId: string, action: 'dismiss' | 'warn' | 'suspend' | 'ban', duration?: number, reason?: string): Promise<void> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Admin user not authenticated');
-
-    // Get the report details
-    const { data: report, error: reportError } = await supabase
-      .from('user_reports')
-      .select('*')
-      .eq('id', reportId)
-      .single();
-
-    if (reportError) throw reportError;
-    if (!report) throw new Error('Report not found');
-
-    // Update report status
-    const { error: updateError } = await supabase
-      .from('user_reports')
-      .update({ 
-        status: action === 'dismiss' ? 'dismissed' : 'resolved',
-        resolved_at: new Date().toISOString(),
-        admin_note: reason
-      })
-      .eq('id', reportId);
-
-    if (updateError) throw updateError;
-
-    // Take action on user if needed
-    if (action !== 'dismiss') {
-      const expiresAt = duration ? new Date(Date.now() + duration * 24 * 60 * 60 * 1000).toISOString() : undefined;
+    try {
+      // Join with profiles table to get user names
+      const { data, error } = await supabase
+        .from('user_reports')
+        .select(`
+          *,
+          reported_user:profiles!reported_user_id(name),
+          reporter:profiles!reported_by(name)
+        `);
       
-      const { error: actionError } = await supabase
-        .from('user_actions')
-        .insert([{
-          user_id: report.reported_user_id,
-          action_type: action === 'warn' ? 'warning' : action,
-          reason: reason || `Reported for ${report.reason}`,
-          admin_id: user.id,
-          expires_at: expiresAt
-        }]);
-
-      if (actionError) throw actionError;
+      if (error) {
+        console.error('Error fetching reported accounts:', error);
+        throw error;
+      }
+      
+      console.log('Raw reported accounts data:', data);
+      
+      if (!data || data.length === 0) {
+        return [];
+      }
+      
+      return data.map((report: any) => ({
+        id: report.id,
+        reportedUserName: report.reported_user?.name || 'Unknown User',
+        reportedByName: report.reporter?.name || 'Unknown Reporter',
+        reason: report.reason || 'unknown',
+        priority: report.priority || 'medium',
+        status: report.status || 'pending',
+        description: report.description || 'No description provided',
+        createdAt: report.created_at
+      }));
+    } catch (error) {
+      console.error('Error in getReportedAccounts:', error);
+      throw error;
     }
-
-    // Send notification to reporter
-    await this.sendReportNotification(report.reported_by, reportId, action);
   },
 
-  // Process reported message
-  async processReportedMessage(reportId: string, action: 'dismiss' | 'remove' | 'warn' | 'suspend', reason?: string): Promise<void> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Admin user not authenticated');
-
-    // Get the report details
-    const { data: report, error: reportError } = await supabase
-      .from('message_reports')
-      .select('*')
-      .eq('id', reportId)
-      .single();
-
-    if (reportError) throw reportError;
-    if (!report) throw new Error('Report not found');
-
-    // Update report status
-    const { error: updateError } = await supabase
-      .from('message_reports')
-      .update({ 
-        status: action === 'dismiss' ? 'dismissed' : action === 'remove' ? 'action_taken' : 'reviewed',
-        reviewed_at: new Date().toISOString(),
-        admin_note: reason
-      })
-      .eq('id', reportId);
-
-    if (updateError) throw updateError;
-
-    // Take action on message if needed
-    if (action === 'remove') {
-      const { error: deleteError } = await supabase
-        .from('messages')
-        .delete()
-        .eq('id', report.message_id);
-
-      if (deleteError) throw deleteError;
+  async getReportedMessages(): Promise<ReportedMessage[]> {
+    try {
+      // Join with profiles and messages tables to get complete data
+      const { data, error } = await supabase
+        .from('message_reports')
+        .select(`
+          *,
+          sender:profiles!sender_id(name),
+          reporter:profiles!reported_by(name),
+          message:messages!message_id(content)
+        `);
+      
+      if (error) {
+        console.error('Error fetching reported messages:', error);
+        throw error;
+      }
+      
+      console.log('Raw reported messages data:', data);
+      
+      if (!data || data.length === 0) {
+        return [];
+      }
+      
+      return data.map((report: any) => ({
+        id: report.id,
+        senderName: report.sender?.name || 'Unknown Sender',
+        reportedByName: report.reporter?.name || 'Unknown Reporter',
+        content: report.message?.content || 'Message content not available',
+        reason: report.reason || 'unknown',
+        status: report.status || 'pending',
+        createdAt: report.created_at
+      }));
+    } catch (error) {
+      console.error('Error in getReportedMessages:', error);
+      throw error;
     }
+  },
 
-    // Take action on user if needed (warn/suspend)
-    if (action === 'warn' || action === 'suspend') {
-      const actionToInsert: any = {
-        user_id: report.sender_id,
-        action_type: action === 'warn' ? 'warning' : 'suspension',
-        reason: reason || `Reported message: ${report.reason}`,
-        admin_id: user.id
-      };
+  async processAppeal(appealId: string, approve: boolean, adminNote: string) {
+    // Appeals functionality not implemented yet
+    throw new Error('Appeals processing not implemented');
+  },
 
-      const { error: actionError } = await supabase
-        .from('user_actions')
-        .insert([actionToInsert]);
+  async processReportedAccount(reportId: string, action: string, duration?: number, adminNote?: string) {
+    try {
+      // Get the report details
+      const { data: report, error: reportError } = await supabase
+        .from('user_reports')
+        .select('*')
+        .eq('id', reportId)
+        .single();
 
-      if (actionError) throw actionError;
+      if (reportError) throw reportError;
+      if (!report) throw new Error('Report not found');
+
+      // Update report status
+      const { error: updateError } = await supabase
+        .from('user_reports')
+        .update({ 
+          status: 'resolved',
+          admin_note: adminNote,
+          resolved_at: new Date().toISOString()
+        })
+        .eq('id', reportId);
+
+      if (updateError) throw updateError;
+
+      // Apply action to the reported user
+      if (report.reported_user_id) {
+        switch (action) {
+          case 'warn':
+            // Add warning to user record
+            const { data: userProfile } = await supabase
+              .from('profiles')
+              .select('warnings')
+              .eq('id', report.reported_user_id)
+              .single();
+
+            const warnings = (userProfile?.warnings || 0) + 1;
+            
+            const { error: warnError } = await supabase
+              .from('profiles')
+              .update({ warnings })
+              .eq('id', report.reported_user_id);
+
+            if (warnError) throw warnError;
+            break;
+
+          case 'suspend':
+            const suspensionEnd = new Date();
+            suspensionEnd.setDate(suspensionEnd.getDate() + (duration || 7));
+
+            const { error: suspendError } = await supabase
+              .from('profiles')
+              .update({ 
+                suspension_end: suspensionEnd.toISOString(),
+                is_banned: false
+              })
+              .eq('id', report.reported_user_id);
+
+            if (suspendError) throw suspendError;
+            break;
+
+          case 'ban':
+            const { error: banError } = await supabase
+              .from('profiles')
+              .update({ 
+                is_banned: true,
+                suspension_end: null
+              })
+              .eq('id', report.reported_user_id);
+
+            if (banError) throw banError;
+            break;
+
+          case 'dismiss':
+            // No action needed, just mark as resolved
+            break;
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error processing reported account:', error);
+      throw error;
     }
-
-    // Send notification to reporter
-    await this.sendMessageReportNotification(report.reported_by, reportId, action);
   },
 
-  // Send notification for appeal decision
-  async sendAppealNotification(actionId: string, status: string): Promise<void> {
-    // Implementation would depend on your notification system
-    // This is a placeholder for the actual notification logic
-    console.log(`Sending appeal notification: Action ${actionId} was ${status}`);
-  },
+  async processReportedMessage(reportId: string, action: string, adminNote?: string) {
+    try {
+      // Get the report details
+      const { data: report, error: reportError } = await supabase
+        .from('message_reports')
+        .select('*')
+        .eq('id', reportId)
+        .single();
 
-  // Send notification for report decision
-  async sendReportNotification(userId: string, reportId: string, action: string): Promise<void> {
-    // Implementation would depend on your notification system
-    // This is a placeholder for the actual notification logic
-    console.log(`Sending report notification: Report ${reportId} was ${action}`);
-  },
+      if (reportError) throw reportError;
+      if (!report) throw new Error('Report not found');
 
-  // Send notification for message report decision
-  async sendMessageReportNotification(userId: string, reportId: string, action: string): Promise<void> {
-    // Implementation would depend on your notification system
-    // This is a placeholder for the actual notification logic
-    console.log(`Sending message report notification: Report ${reportId} was ${action}`);
-  }
+      // Update report status
+      const { error: updateError } = await supabase
+        .from('message_reports')
+        .update({ 
+          status: 'resolved',
+          admin_note: adminNote,
+          reviewed_at: new Date().toISOString()
+        })
+        .eq('id', reportId);
+
+      if (updateError) throw updateError;
+
+      // Apply action based on the action type
+      if (report.sender_id) {
+        switch (action) {
+          case 'remove':
+            // Delete the message
+            if (report.message_id) {
+              const { error: deleteError } = await supabase
+                .from('messages')
+                .delete()
+                .eq('id', report.message_id);
+
+              if (deleteError) throw deleteError;
+            }
+            break;
+
+          case 'warn':
+            // Add warning to sender
+            const { data: userProfile } = await supabase
+              .from('profiles')
+              .select('warnings')
+              .eq('id', report.sender_id)
+              .single();
+
+            const warnings = (userProfile?.warnings || 0) + 1;
+            
+            const { error: warnError } = await supabase
+              .from('profiles')
+              .update({ warnings })
+              .eq('id', report.sender_id);
+
+            if (warnError) throw warnError;
+            break;
+
+          case 'suspend':
+            const suspensionEnd = new Date();
+            suspensionEnd.setDate(suspensionEnd.getDate() + 7); // Default 7 days
+
+            const { error: suspendError } = await supabase
+              .from('profiles')
+              .update({ 
+                suspension_end: suspensionEnd.toISOString(),
+                is_banned: false
+              })
+              .eq('id', report.sender_id);
+
+            if (suspendError) throw suspendError;
+            break;
+
+          case 'dismiss':
+            // No action needed, just mark as resolved
+            break;
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error processing reported message:', error);
+      throw error;
+    }
+  },
 };

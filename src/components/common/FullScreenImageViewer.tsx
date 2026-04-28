@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Crown, Shield } from 'lucide-react';
+
+import { User } from '../../types';
 
 interface FullScreenImageViewerProps {
   images: string[];
+  user: User; // Add user prop
   initialIndex: number;
   onClose: () => void;
   onAdd?: () => void;
@@ -28,8 +31,10 @@ const variants = {
   }),
 };
 
-const FullScreenImageViewer: React.FC<FullScreenImageViewerProps> = ({ images, initialIndex, onClose, onAdd, onDelete, onSetDP }) => {
+const FullScreenImageViewer: React.FC<FullScreenImageViewerProps> = ({ images, user, initialIndex, onClose, onAdd, onDelete, onSetDP }) => {
   const [[page, direction], setPage] = useState([initialIndex, 0]);
+  const age = user.dob ? new Date().getFullYear() - new Date(user.dob).getFullYear() : null;
+  const accountType = user.account_type;
 
   const paginate = (newDirection: number) => {
     setPage([page + newDirection, newDirection]);
@@ -56,10 +61,17 @@ const FullScreenImageViewer: React.FC<FullScreenImageViewerProps> = ({ images, i
       className="fixed inset-0 bg-black z-50 flex flex-col"
     >
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 p-4 z-20">
+      <div className="absolute top-0 left-0 right-0 p-4 z-20 flex items-center justify-between bg-gradient-to-b from-black/70 to-transparent">
         <button onClick={onClose} className="p-2 rounded-full bg-black/30 text-white">
           <ArrowLeft className="w-6 h-6" />
         </button>
+        <div className="flex items-center gap-2 text-white">
+          <span className="font-bold text-lg">{user.name} {age}</span>
+          {accountType === 'vip' && <Crown className="w-5 h-5 text-amber-400" />}
+          {accountType === 'pro' && <Shield className="w-5 h-5 text-cyan-400" fill="currentColor" />}
+        </div>
+        {/* Placeholder for other actions */}
+        <div className="w-10"></div>
       </div>
 
       {/* Image Viewer */}

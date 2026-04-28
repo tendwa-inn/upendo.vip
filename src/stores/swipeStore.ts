@@ -2,13 +2,17 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 import { useAuthStore } from './authStore';
 import { useDiscoveryStore } from './discoveryStore';
-import { useMatchStore } from './matchStore.tsx';
+import { useMatchStore } from './matchStore';
+import { useAppSettingsStore } from './appSettingsStore';
 
 interface SwipeState {
   swipeCount: number;
   lastSwipeAt: Date | null;
+  rewindCount: number;
+  lastRewindAt: Date | null;
   swipeRight: (likedUserId: string) => Promise<{ matched: boolean }>;
   swipeLeft: (swipedUserId: string) => Promise<void>;
+  rewind: () => Promise<boolean>; // Return true if rewind was successful
   loadSwipeState: () => void;
 }
 
@@ -18,11 +22,15 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
   swipeCount: 0,
   lastSwipeAt: null,
 
+  rewindCount: 0,
+  lastRewindAt: null,
+
   loadSwipeState: () => {
     const savedState = localStorage.getItem('swipeState');
     if (savedState) {
-      const { swipeCount, lastSwipeAt } = JSON.parse(savedState);
+      const { swipeCount, lastSwipeAt, rewindCount, lastRewindAt } = JSON.parse(savedState);
       const lastSwipeDate = new Date(lastSwipeAt);
+      const lastRewindDate = new Date(lastRewindAt);
       const now = new Date();
 
       // Reset swipe count if it's a new day
@@ -30,6 +38,13 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
         set({ swipeCount: 0, lastSwipeAt: now });
       } else {
         set({ swipeCount, lastSwipeAt: lastSwipeDate });
+      }
+
+      // Reset rewind count if it's a new day
+      if (now.getDate() !== lastRewindDate.getDate() || now.getMonth() !== lastRewindDate.getMonth() || now.getFullYear() !== lastRewindDate.getFullYear()) {
+        set({ rewindCount: 0, lastRewindAt: now });
+      } else {
+        set({ rewindCount, lastRewindAt: lastRewindDate });
       }
     }
   },
@@ -43,8 +58,9 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
     }
 
     // Check swipe limit by tier
-    const tier = ((profile as any).accountType || (profile as any).subscription || (profile as any).subscriptionTier || 'free') as 'free' | 'pro' | 'vip';
-    const limit = LIMITS[tier] ?? LIMITS.free;
+    const tier = ((profile as any).account_type || (profile as any).subscription || (profile as any).subscriptionTier || 'free') as 'free' | 'pro' | 'vip';
+    const settings = useAppSettingsStore.getState().getSettingForTier(tier);
+    const limit = settings?.swipes_per_day ?? (LIMITS[tier] ?? LIMITS.free);
     {
       const { swipeCount, lastSwipeAt } = get();
       const now = new Date();
@@ -61,31 +77,22 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
 
       const newSwipeCount = isSameDay ? swipeCount + 1 : 1;
       set({ swipeCount: newSwipeCount, lastSwipeAt: now });
-      localStorage.setItem('swipeState', JSON.stringify({ swipeCount: newSwipeCount, lastSwipeAt: now }));
+      localStorage.setItem('swipeState', JSON.stringify({ swipeCount: newSwipeCount, lastSwipeAt: now, rewindCount: get().rewindCount, lastRewindAt: get().lastRewindAt }));
     }
 
-    const { data: existingLike, error: existingLikeError } = await supabase
+    // 1. Use upsert to safely insert the like, avoiding duplicate errors
+    const { error } = await supabase
       .from('likes')
-      .select('id')
-      .eq('liker_id', currentUser.id)
-      .eq('liked_id', likedUserId)
-      .limit(1)
-      .maybeSingle();
+      .upsert(
+        { liker_id: currentUser.id, liked_id: likedUserId },
+        { onConflict: 'liker_id,liked_id' }
+      );
 
-    if (existingLikeError) {
-      console.error('Error checking existing like:', existingLikeError);
+    // 2. Explicitly handle errors, but ignore duplicate violations (code 23505)
+    // Note: upsert should prevent this, but it's good practice
+    if (error && error.code !== '23505') {
+      console.error('Error liking user:', error);
       return { matched: false };
-    }
-
-    if (!existingLike) {
-      const { error: likeError } = await supabase
-        .from('likes')
-        .insert({ liker_id: currentUser.id, liked_id: likedUserId });
-
-      if (likeError) {
-        console.error('Error recording like:', likeError);
-        return { matched: false };
-      }
     }
 
     // Check for a mutual like
@@ -109,6 +116,15 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
       await createMatch(likedUserId);
       useDiscoveryStore.getState().removePotentialMatch(likedUserId);
       return { matched: true };
+    } else {
+      // Create a notification for the liked user if it's not a match yet
+      await supabase.from('notifications').insert({
+        user_id: likedUserId,
+        actor_id: currentUser.id,
+        type: 'new_like',
+        title: 'You have a new like!',
+        message: `${profile?.name || 'Someone'} liked your profile.`
+      });
     }
 
     useDiscoveryStore.getState().removePotentialMatch(likedUserId);
@@ -119,7 +135,50 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
     const currentUser = useAuthStore.getState().user;
     if (!currentUser) return;
 
-    // We don't need to record left swipes in the DB for this logic, just remove from discovery
+    // Add to dislikes table
+    const { error } = await supabase
+      .from('dislikes')
+      .insert({ user_id: currentUser.id, disliked_user_id: swipedUserId });
+
+    if (error) {
+      console.error('Error recording dislike:', error);
+      // Don't stop the UI flow, but log the error
+    }
+
+// Increment swipe count for popularity score
+    incrementSwipeCount(currentUser.id);
+
+    // We still remove from discovery locally for immediate feedback
     useDiscoveryStore.getState().removePotentialMatch(swipedUserId);
+  },
+
+  rewind: async () => {
+    const { profile } = useAuthStore.getState();
+    if (!profile) return false;
+
+    const tier = ((profile as any).account_type || (profile as any).subscription || (profile as any).subscriptionTier || 'free') as 'free' | 'pro' | 'vip';
+    const settings = useAppSettingsStore.getState().getSettingForTier(tier);
+    const limit = settings?.rewind_count ?? 0;
+
+    if (limit === 0) return false; // No rewinds for this tier
+
+    const { rewindCount, lastRewindAt } = get();
+    const now = new Date();
+
+    const isSameDay = lastRewindAt &&
+      now.getFullYear() === lastRewindAt.getFullYear() &&
+      now.getMonth() === lastRewindAt.getMonth() &&
+      now.getDate() === lastRewindAt.getDate();
+
+    if (limit !== -1 && isSameDay && rewindCount >= limit) {
+      console.log('Daily rewind limit reached.');
+      return false;
+    }
+
+    const newRewindCount = isSameDay ? rewindCount + 1 : 1;
+    set({ rewindCount: newRewindCount, lastRewindAt: now });
+    localStorage.setItem('swipeState', JSON.stringify({ swipeCount: get().swipeCount, lastSwipeAt: get().lastSwipeAt, rewindCount: newRewindCount, lastRewindAt: now }));
+
+    return true;
   },
 }));

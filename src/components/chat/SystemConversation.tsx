@@ -1,10 +1,9 @@
 import React from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Shield, Check } from 'lucide-react';
 import { SystemMessage } from '../../services/systemMessengerService';
-import VerificationBadge from '../VerificationBadge';
 import { useAuthStore } from '../../stores/authStore';
 
-const PINK_HEART_URL = '/Notifications Image Icon/Upendo Notifications.png';
+const PINK_HEART_URL = '/icons/pink_ghost_icon.png';
 
 interface SystemConversationProps {
   message: SystemMessage;
@@ -12,9 +11,6 @@ interface SystemConversationProps {
 }
 
 const SystemConversation: React.FC<SystemConversationProps> = ({ message, onClose }) => {
-  const systemProfile = {
-    accountType: 'pro',
-  };
   const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
   const isVip = acct === 'vip';
   const isPro = acct === 'pro';
@@ -27,10 +23,20 @@ const SystemConversation: React.FC<SystemConversationProps> = ({ message, onClos
           <ArrowLeft className="w-6 h-6" />
         </button>
         <div className="flex items-center gap-3 mx-auto">
-          <img src={PINK_HEART_URL} alt="Upendo" className="w-10 h-10 rounded-full" />
+          <img 
+            src={PINK_HEART_URL} 
+            alt="Upendo" 
+            className="w-10 h-10 rounded-full"
+            onError={(e) => {
+              e.currentTarget.src = '/logo-splash.png';
+            }}
+          />
           <div className="flex items-center gap-2">
             <h2 className="font-bold">Upendo Chat</h2>
-            <VerificationBadge profile={systemProfile as any} />
+            <div className="relative w-5 h-5 rounded-full bg-pink-800 flex items-center justify-center" title="System Notification">
+              <Shield className="absolute w-full h-full text-pink-900" />
+              <Check className="absolute w-3 h-3 text-white" strokeWidth={3} />
+            </div>
           </div>
         </div>
         <div className="w-8"></div> {/* Spacer */}
@@ -42,7 +48,7 @@ const SystemConversation: React.FC<SystemConversationProps> = ({ message, onClos
           <div className="max-w-[85%]">
             <div className={`rounded-2xl text-sm leading-relaxed shadow-lg ${isVip ? 'bg-gradient-to-b from-[#1a1a1a] to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#0e2030] to-[#091522]' : 'bg-gradient-to-b from-[#3a1a22] to-[#2E0C13]'} px-4 py-3`}>
               <h3 className="font-bold text-base mb-2 text-white">{message.title}</h3>
-              {message.photo_url && <img src={message.photo_url} alt="System Message" className="rounded-lg mb-2 max-w-full" onError={(e) => { e.currentTarget.style.display = 'none'; }} />}
+              {message.photo_url && <img src={message.photo_url} alt="System Message" className="rounded-lg mb-2 max-w-full" onError={(e) => { e.currentTarget.src = '/logo-splash.png'; }} />}
               <p className="text-white">{message.message}</p>
             </div>
             <div className="text-[10px] mt-1 opacity-60 text-left">

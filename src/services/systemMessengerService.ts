@@ -1,4 +1,5 @@
-import { supabase } from '../utils/supabase';
+import { supabase } from '../lib/supabaseClient';
+import { useAuthStore } from '../stores/authStore';
 
 // Define the shape of a system message based on your new table
 interface SystemMessage {
@@ -38,9 +39,11 @@ export const systemMessengerService = {
    * Retrieves all system messages, ordered by creation date.
    */
   async getSystemMessages() {
+    const userId = useAuthStore.getState().user?.id;
+
     const { data, error } = await supabase
       .from('system_messages')
-      .select('*')
+      .select('*, system_message_read_status(user_id)')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -48,6 +51,20 @@ export const systemMessengerService = {
       throw error;
     }
 
-    return data;
+    return data?.map(msg => ({ ...msg, isRead: msg.system_message_read_status.some(status => status.user_id === userId) })) || [];
+  },
+
+  async markAsRead(messageId: string) {
+    const userId = useAuthStore.getState().user?.id;
+
+    if (!userId) return;
+
+    const { error } = await supabase
+      .from('system_message_read_status')
+      .insert([{ message_id: messageId, user_id: userId }]);
+
+    if (error) {
+      console.error('Error marking system message as read:', error);
+    }
   },
 };

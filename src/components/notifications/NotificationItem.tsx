@@ -8,9 +8,11 @@ import { formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import UpgradeModal from '../modals/UpgradeModal';
 
 import { supabase } from '../../lib/supabaseClient';
-import { useMatchStore } from '../../stores/matchStore.tsx';
+import { useModalStore } from '../../stores/modalStore';
+import StrikeInfoModal from '../modals/StrikeInfoModal';
+import PromoDetailsModal from '../modals/PromoDetailsModal';
 
-const PINK_HEART_URL = '/Notifications Image Icon/Upendo Notifications.png';
+const FALLBACK_ICON_URL = '/icons/pink_ghost_icon.png';
 
 const formatTimestamp = (timestamp: string | Date): string => {
   if (!timestamp || isNaN(new Date(timestamp).getTime())) return '';
@@ -38,7 +40,14 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
 
   const { markAsRead } = useNotificationStore();
   const navigate = useNavigate();
+  const { isStrikeInfoModalOpen, closeStrikeInfoModal, openStrikeInfoModal, isPromoDetailsModalOpen, closePromoDetailsModal, openPromoDetailsModal } = useModalStore();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [promoDetails, setPromoDetails] = useState({
+    code: '',
+    name: '',
+    description: '',
+    expiresAt: ''
+  });
 
   const handleNotificationClick = () => {
     if (!notification.isRead) {
@@ -51,7 +60,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
       case 'new-like':
         if (notification.relatedUser?.id) {
           // Check if user is premium
-          const isPremium = profile?.accountType === 'pro' || profile?.accountType === 'vip';
+          const isPremium = profile?.account_type === 'pro' || profile?.accountType === 'vip';
           if (isPremium) {
             navigate(`/user/${notification.relatedUser.id}`);
           } else {
@@ -79,6 +88,41 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
 
   // Correctly check for premium status using account_type
   const isPremium = profile?.accountType === 'pro' || profile?.accountType === 'vip';
+
+  const handlePromoDetailsClick = () => {
+    // Extract promo details from notification metadata or message
+    const message = notification.message || '';
+    
+    // Try to extract promo code (look for uppercase alphanumeric codes)
+    const codeMatch = message.match(/[A-Z0-9]{4,}/g);
+    const promoCode = (notification as any).promoCode || (codeMatch && codeMatch[0]) || 'PROMO';
+    
+    // Extract promo name - look for quoted text or capitalize first meaningful part
+    const nameMatch = message.match(/"([^"]+)"/);
+    const promoName = (notification as any).promoName || 
+                     nameMatch?.[1] || 
+                     message.split(' ').slice(0, 3).join(' ').replace(/[.,!?]/g, '') ||
+                     'Special Promotion';
+    
+    // Extract description from the message or use default
+    const promoDescription = (notification as any).promoDescription || 
+                           message.replace(/\s+/g, ' ').trim() ||
+                           'You have successfully redeemed a promotional offer!';
+    
+    // Calculate expiration (assume 30 days from notification creation if not specified)
+    const expiresAt = (notification as any).expiresAt || 
+                     (notification.timestamp ? new Date(new Date(notification.timestamp).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() : 
+                     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
+
+    setPromoDetails({
+      code: promoCode,
+      name: promoName,
+      description: promoDescription,
+      expiresAt: expiresAt
+    });
+
+    openPromoDetailsModal();
+  };
 
   const renderContent = () => {
     // Use the new isPremium flag
@@ -141,9 +185,33 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
         );
       case 'system-message':
       case 'system':
-        return notification.message;
+        // Check if this is a strike notification
+        if (notification.message?.includes('strike') || notification.message?.includes('inappropriate language')) {
+          return (
+            <div>
+              <p>{notification.message}</p>
+              <button onClick={(e) => { e.stopPropagation(); openStrikeInfoModal(); }} className="text-sm text-yellow-400 hover:underline mt-2">Click to view details</button>
+            </div>
+          );
+        }
+        if (notification.title && notification.title.trim() !== '') {
+          return notification.title;
+        }
+        return `${notification.message.substring(0, 75)}...`;
       case 'promo-redemption':
-        return notification.message; // Display the message from the DB
+        return (
+          <div>
+            <p>{notification.message}</p>
+            <button onClick={(e) => { e.stopPropagation(); handlePromoDetailsClick(); }} className="text-sm text-yellow-400 hover:underline mt-2">Click to view details</button>
+          </div>
+        );
+      case 'account-issue':
+        return (
+          <div>
+            <p>{notification.message}</p>
+            <button onClick={(e) => { e.stopPropagation(); openStrikeInfoModal(); }} className="text-sm text-yellow-400 hover:underline mt-2">Click to view details</button>
+          </div>
+        );
       default:
         return notification.message || 'New notification';
     }
@@ -155,7 +223,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
   const userPhoto = notification.relatedUser?.photos?.[0];
   const systemPhotoUrl = notification.photo_url;
 
-  let imageSrc = PINK_HEART_URL;
+  let imageSrc = FALLBACK_ICON_URL;
   if (isUserEvent && userPhoto) {
     if (userPhoto.startsWith('http')) {
       imageSrc = userPhoto;
@@ -186,7 +254,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
               onError={(e) => {
                 if (e.currentTarget.dataset.fallbackUsed !== 'true') {
                   e.currentTarget.dataset.fallbackUsed = 'true';
-                  e.currentTarget.src = PINK_HEART_URL;
+                  e.currentTarget.src = FALLBACK_ICON_URL;
                 }
               }}
             />
@@ -200,6 +268,15 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
         </div>
       </div>
       {showUpgradeModal && <UpgradeModal onClose={() => setShowUpgradeModal(false)} />}
+      <StrikeInfoModal isOpen={isStrikeInfoModalOpen} onClose={closeStrikeInfoModal} />
+      <PromoDetailsModal 
+        isOpen={isPromoDetailsModalOpen} 
+        onClose={closePromoDetailsModal}
+        promoCode={promoDetails.code}
+        promoName={promoDetails.name}
+        promoDescription={promoDetails.description}
+        expiresAt={promoDetails.expiresAt}
+      />
     </>
   );
 };

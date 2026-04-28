@@ -1,20 +1,131 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
-import { Heart, Mail, Lock, X } from 'lucide-react';
+import { Heart, Mail, Lock, X, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import SplashScreen from '../components/SplashScreen';
+import FloatingGhosts from '../components/FloatingGhosts';
+import AddToHomeScreenModal from '../components/modals/AddToHomeScreenModal';
 
 const LoginPage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { signInWithGoogle } = useAuthStore();
   const navigate = useNavigate();
+
+
   const [isLangMenuOpen, setLangMenuOpen] = useState(false);
   const [isProductsOpen, setProductsOpen] = useState(false);
   const [isTosOpen, setTosOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isInstallModalOpen, setInstallModalOpen] = useState(false);
+  const [showInstallButton, setShowInstallButton] = useState(false);
+
+  useEffect(() => {
+    const checkIfInstalled = async () => {
+      try {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+          if (isStandalone || registrations.length > 0) {
+            setShowInstallButton(false);
+            return true;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking installation status:', error);
+      }
+      return false;
+    };
+
+    const handleInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isChrome = /Chrome/i.test(navigator.userAgent);
+      const isSafari = /Safari/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent);
+      
+      if (isMobile && (isChrome || isSafari)) {
+        setShowInstallButton(true);
+      } else {
+        setInstallModalOpen(true);
+      }
+    };
+
+    const setupInstallButton = async () => {
+      const isInstalled = await checkIfInstalled();
+      if (!isInstalled) {
+        window.addEventListener('beforeinstallprompt', handleInstallPrompt);
+        
+        setTimeout(() => {
+          if (!installPrompt) {
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (isMobile) {
+              setShowInstallButton(true);
+            }
+          }
+        }, 3000);
+      }
+    };
+    
+    setupInstallButton();
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
+    };
+  }, []);
+
+  useEffect(() => {
+    const manualTimer = setTimeout(() => {
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (isMobile && !showInstallButton && !installPrompt) {
+        setShowInstallButton(true);
+      }
+    }, 5000);
+
+    return () => clearTimeout(manualTimer);
+  }, [showInstallButton, installPrompt]);
+
+
+  useEffect(() => {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile) {
+      setTimeout(() => {
+        if (!installPrompt) {
+          setShowInstallButton(true);
+        }
+      }, 1000);
+    }
+  }, []);
+
+  const handleInstall = async () => {
+    if (installPrompt) {
+      try {
+        const result = await installPrompt.prompt();
+        if (result.outcome === 'accepted') {
+          toast.success('App installed successfully!');
+        } else {
+          toast('Installation cancelled');
+        }
+        setShowInstallButton(false);
+      } catch (error) {
+        console.error('Installation failed:', error);
+        toast.error('Installation failed. Please try again.');
+      }
+    } else {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      if (isIOS) {
+        toast('To install on iOS: Tap the share button and select "Add to Home Screen"');
+      } else {
+        toast.error('Installation not available. Please try using Chrome or Safari.');
+      }
+    }
+  };
+
 
   React.useEffect(() => {
     const id = setTimeout(() => setShowSplash(false), 5000);
@@ -41,11 +152,29 @@ const LoginPage: React.FC = () => {
     setLangMenuOpen(false);
   };
 
-  // No form submission for Google login, so handleSubmit is removed
-
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-[#22090E] to-[#2E0C13]">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-[#22090E] to-[#2E0C13] relative overflow-hidden">
       <SplashScreen visible={showSplash} />
+      
+      {showInstallButton && !showSplash && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0.8, y: -20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleInstall}
+          className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-gradient-to-r from-rose-700 to-purple-800 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/20 backdrop-blur-sm opacity-40"
+          style={{
+            background: 'linear-gradient(135deg, #be185d, #6b21a8)',
+            boxShadow: '0 4px 15px rgba(190, 24, 93, 0.3)'
+          }}
+        >
+          <Download size={16} className="flex-shrink-0" />
+          <span className="hidden sm:inline font-semibold">Install App</span>
+        </motion.button>
+      )}
+      
+      <FloatingGhosts />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -81,24 +210,30 @@ const LoginPage: React.FC = () => {
             </motion.div>
           </motion.div>
           
-          <motion.h1
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="text-4xl font-bold mb-2"
-          >
-            <span className="text-white">Upe</span>
-            <span className="bg-gradient-to-r from-white via-pink-300 to-pink-500 bg-clip-text text-transparent">ndo</span>
-          </motion.h1>
-          
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-            className="text-white/80 text-lg"
+          <motion.h1 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            transition={{ delay: 0.4 }} 
+            className="text-5xl font-bold text-white"
           >
             {t('findYourPerfectMatch')}
+          </motion.h1>
+          <motion.p 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            transition={{ delay: 0.6 }} 
+            className="text-lg text-pink-300 mt-2 mb-8"
+          >
+            {t('appPurpose')}
           </motion.p>
+          {/* <motion.p 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            transition={{ delay: 0.8 }} 
+            className="text-md text-white/70 max-w-md text-center"
+          >
+            {t('appDescription')}
+          </motion.p> */}
 
           <motion.button
             whileHover={{ scale: 1.02 }}
@@ -132,11 +267,11 @@ const LoginPage: React.FC = () => {
             </div>
             <a href="#" onClick={(e) => { e.preventDefault(); setTosOpen(true); }} className="hover:text-white">{t('termsOfService')}</a>
             <a href="#" onClick={(e) => { e.preventDefault(); setProductsOpen(true); }} className="hover:text-white">{t('products')}</a>
+            <Link to="/privacy" className="hover:text-white">{t('privacyPolicy', 'Privacy Policy')}</Link>
           </div>
           <p className="text-pink-400">{t('copyright')}</p>
         </footer>
 
-        {/* Products Modal */}
         {isProductsOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
             <motion.div
@@ -164,7 +299,6 @@ const LoginPage: React.FC = () => {
           </div>
         )}
 
-        {/* Terms of Service Modal */}
         {isTosOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
             <motion.div
@@ -195,11 +329,40 @@ const LoginPage: React.FC = () => {
                 <p>
                   By using Upendo, you agree to communicate respectfully, comply with local laws, and avoid activities that harm others or the platform. Upendo may update these terms to reflect product or legal changes; material updates will be communicated in‑app. If any provision is found unenforceable, the remaining sections remain in effect. For questions about privacy, security or account rights, contact Support through the app. Our goal is to give every member a safe, reliable and transparent environment to meet, chat and build meaningful connections.
                 </p>
+
+                <h3 className="text-lg font-bold text-pink-400 pt-4">Subscription Tiers</h3>
+                <p>
+                  Upendo offers optional paid subscriptions that unlock exclusive features. Payments are processed securely through our partners and are subject to their terms.
+                </p>
+                <div className="pl-4">
+                  <h4 className="font-bold text-white">Upendo Pro includes:</h4>
+                  <ul className="list-disc list-inside text-white/80">
+                    <li>Unlimited Swipes</li>
+                    <li>See Who Likes You</li>
+                    <li>Advanced Search Filters</li>
+                    <li>Ad-Free Experience</li>
+                  </ul>
+                  <h4 className="font-bold text-white mt-2">Upendo VIP includes all Pro features, plus:</h4>
+                  <ul className="list-disc list-inside text-white/80">
+                    <li>Monthly Profile Boost</li>
+                    <li>Incognito Mode</li>
+                    <li>Read Receipts in Chat</li>
+                    <li>Exclusive VIP Profile Badge</li>
+                  </ul>
+                </div>
               </div>
             </motion.div>
           </div>
         )}
       </motion.div>
+
+      {isInstallModalOpen && (
+        <AddToHomeScreenModal
+          isOpen={isInstallModalOpen}
+          onClose={() => setInstallModalOpen(false)}
+          installPrompt={installPrompt}
+        />
+      )}
     </div>
   );
 };

@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { Button } from '@tremor/react';
 import Portal from '../Portal';
 import { X } from 'lucide-react';
+import { useAuthStore } from '../../stores/authStore';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 
 const DeactivationModal = ({ onClose, onDeactivate }) => {
   const [reason, setReason] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const reasons = [
     'Too much time on Upendo',
@@ -55,6 +58,12 @@ const DeactivationModal = ({ onClose, onDeactivate }) => {
             </Button>
           </div>
         </div>
+        {showDeleteConfirm && (
+          <DeleteConfirmationModal 
+            onClose={() => setShowDeleteConfirm(false)}
+            onConfirm={handleDelete}
+          />
+        )}
       </div>
     </Portal>
   );

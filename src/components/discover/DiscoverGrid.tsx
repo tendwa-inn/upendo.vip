@@ -9,6 +9,9 @@ import { useMatchStore } from '../../stores/matchStore.tsx';
 import { useMatchAnimationStore } from '../../stores/matchAnimationStore';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import { cn } from '../../lib/utils';
+
+import { getTheme } from '../../styles/theme';
 
 const DiscoverGrid: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -17,8 +20,11 @@ const DiscoverGrid: React.FC = () => {
   const { createMatch } = useMatchStore();
   const { showMatchAnimation } = useMatchAnimationStore.getState();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
-  const { user: currentUser, profile, messageRequestsSent, messageRequestResetDate, incrementMessageRequests } = useAuthStore();
+  const { user: currentUser, profile, messageRequestsSent, messageRequestResetDate, incrementMessageRequests, isPro, isVip } = useAuthStore();
   const { t } = useTranslation();
+
+  const accountType = (profile as any)?.account_type || (profile as any)?.subscription || 'free';
+  const theme = getTheme(accountType);
 
   const VIBES = ['Normal', 'Playful', 'Chill', 'Creative', 'Curious', 'Naughty', 'Mellow', 'Energetic', 'Wanna go out', 'Cooking', 'Travelling', 'Inter-racial dating'];
   const FREE_VIBES = ['Normal', 'Playful', 'Chill', 'Creative', 'Curious', 'Mellow'];
@@ -26,7 +32,7 @@ const DiscoverGrid: React.FC = () => {
   const isPremium =
     profile?.subscription === 'pro' ||
     profile?.subscription === 'vip' ||
-    (profile as any)?.accountType === 'pro' ||
+    (profile as any)?.account_type === 'pro' ||
     (profile as any)?.accountType === 'vip';
   const COMPATIBILITY_THRESHOLD = Number(localStorage.getItem('compatThreshold') || 3);
 
@@ -359,51 +365,51 @@ const DiscoverGrid: React.FC = () => {
       toast.error(t('discover.likes.error'));
     }
   };
-  const acct = (profile?.subscription || (profile as any)?.accountType) as string | undefined;
-  const isVip = acct === 'vip';
-  const isPro = acct === 'pro';
+
   return (
     <div>
-      <h2 className={`text-2xl font-bold mb-2 ${isVip ? 'text-amber-400' : isPro ? 'text-[#ff7f50]' : 'text-white'}`}>{isVip ? t('discover.dailyVibes.titleVip') : isPro ? t('discover.dailyVibes.titlePro') : t('discover.dailyVibes.title')}</h2>
-      <div className="flex flex-wrap gap-2 mb-4">
-        {VIBES.map(v => {
-          const locked = !isPremium && !FREE_VIBES.includes(v);
-          return (
-            <button
-              key={v}
-              onClick={() => !locked && setVibeForToday(v)}
-              className={`px-3 py-1 rounded-full text-xs border flex items-center gap-1 ${
-                selectedVibe === v && !locked
-                  ? ((profile as any)?.accountType === 'vip'
-                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black border-amber-400'
-                      : ((profile as any)?.accountType === 'pro'
-                          ? 'bg-[#ff7f50] text-white border-[#ff5e57]'
-                          : 'bg-pink-600 text-white border-pink-500'))
-                  : locked
-                    ? 'bg-white/5 text-white/40 border-white/10'
-                    : 'bg-white/10 text-white/80 border-white/20'
-              } ${locked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-              title={locked ? t('discover.vibes.tooltip.locked') : t('discover.vibes.tooltip.setToday')}
-            >
-              {locked && <Lock className="w-3 h-3" />}
-              <span>
-                {v === 'Normal' ? t('discover.vibes.normal')
-                  : v === 'Playful' ? t('discover.vibes.playful')
-                  : v === 'Chill' ? t('discover.vibes.chill')
-                  : v === 'Creative' ? t('discover.vibes.creative')
-                  : v === 'Curious' ? t('discover.vibes.curious')
-                  : v === 'Naughty' ? t('discover.vibes.naughty')
-                  : v === 'Mellow' ? t('discover.vibes.mellow')
-                  : v === 'Energetic' ? t('discover.vibes.energetic')
-                  : v === 'Wanna go out' ? t('discover.vibes.wannaGoOut')
-                  : v === 'Cooking' ? t('discover.vibes.cooking')
-                  : v === 'Travelling' ? t('discover.vibes.travelling')
-                  : v === 'Inter-racial dating' ? t('discover.vibes.interRacialDating')
-                  : v}
-              </span>
-            </button>
-          );
-        })}
+      <div className={cn("sticky top-0 z-20 py-4", theme.stickyHeader)}>
+        <h2 className={cn("text-2xl font-bold mb-2", theme.primary)}>{isVip ? t('discover.dailyVibes.titleVip') : isPro ? t('discover.dailyVibes.titlePro') : t('discover.dailyVibes.title')}</h2>
+        <div className="flex flex-wrap gap-2">
+          {VIBES.map(v => {
+            const locked = !isPremium && !FREE_VIBES.includes(v);
+            return (
+              <button
+                key={v}
+                onClick={() => !locked && setVibeForToday(v)}
+                className={`px-3 py-1 rounded-full text-xs border flex items-center gap-1 ${
+                  selectedVibe === v && !locked
+                    ? (isVip
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black border-amber-400'
+                        : isPro
+                            ? 'bg-[#ff7f50] text-white border-[#ff5e57]'
+                            : 'bg-pink-600 text-white border-pink-500')
+                    : locked
+                      ? 'bg-white/5 text-white/40 border-white/10'
+                      : isVip ? 'bg-amber-500/10 text-amber-300/80 border-amber-400/20' : isPro ? 'bg-cyan-500/10 text-cyan-300/80 border-cyan-400/20' : 'bg-white/10 text-white/80 border-white/20'
+                } ${locked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                title={locked ? t('discover.vibes.tooltip.locked') : t('discover.vibes.tooltip.setToday')}
+              >
+                {locked && <Lock className="w-3 h-3" />}
+                <span>
+                  {v === 'Normal' ? t('discover.vibes.normal')
+                    : v === 'Playful' ? t('discover.vibes.playful')
+                    : v === 'Chill' ? t('discover.vibes.chill')
+                    : v === 'Creative' ? t('discover.vibes.creative')
+                    : v === 'Curious' ? t('discover.vibes.curious')
+                    : v === 'Naughty' ? t('discover.vibes.naughty')
+                    : v === 'Mellow' ? t('discover.vibes.mellow')
+                    : v === 'Energetic' ? t('discover.vibes.energetic')
+                    : v === 'Wanna go out' ? t('discover.vibes.wannaGoOut')
+                    : v === 'Cooking' ? t('discover.vibes.cooking')
+                    : v === 'Travelling' ? t('discover.vibes.travelling')
+                    : v === 'Inter-racial dating' ? t('discover.vibes.interRacialDating')
+                    : v}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="grid grid-cols-4 gap-4">
         {seededShuffle(
@@ -418,20 +424,20 @@ const DiscoverGrid: React.FC = () => {
           currentUser?.id || 'seed'
         ).map((user) => (
           <Link to={`/user/${user.id}`} key={user.id} className="relative flex flex-col items-center space-y-2">
-            <div className={`relative w-20 h-20 rounded-full overflow-hidden ${
-              (profile as any)?.accountType === 'vip'
+            <div className={`relative w-16 h-16 rounded-full overflow-hidden ${
+              isVip
                 ? 'ring-2 ring-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
-                : ((profile as any)?.accountType === 'pro' ? 'ring-2 ring-[#ff7f50]/60' : '')
+                : isPro ? 'ring-2 ring-cyan-400/60' : ''
             }`}>
               <img src={user.photos[0]} alt={user.name} className="w-full h-full object-cover" />
               {onlineUsers.hasOwnProperty(user.id) && (
                 <div className={`absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 ${
-                  (profile as any)?.accountType === 'vip' ? 'border-amber-300' : 'border-white'
+                  isVip ? 'border-amber-300' : 'border-white'
                 }`}></div>
               )}
             </div>
             <div className="text-center">
-              <h3 className={`font-bold text-sm ${isVip ? 'text-white' : isPro ? 'text-[#ffecd3]' : 'text-white'}`}>{user.name}, {calculateAge(user.dateOfBirth || (user as any).dob)}</h3>
+              <h3 className={`font-bold text-xs ${isVip ? 'text-white' : isPro ? 'text-cyan-200' : 'text-white'}`}>{user.name}, {calculateAge(user.dateOfBirth || (user as any).dob)}</h3>
               <div className="flex items-center justify-center text-white/80 text-xs mt-1">
                 <span>{formatDistance((user as any).distance_meters || 0)}</span>
               </div>
@@ -470,19 +476,19 @@ const DiscoverGrid: React.FC = () => {
                         e.stopPropagation();
                         handleLikeUser(user.id);
                       }}
-                      className={`absolute top-0 left-0 w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-50 ${
-                        (profile as any)?.accountType === 'vip'
+                      className={`absolute top-0 left-0 w-7 h-7 rounded-full flex items-center justify-center disabled:opacity-50 ${
+                        isVip
                           ? 'bg-amber-500/30 text-amber-300'
-                          : ((profile as any)?.accountType === 'pro'
-                              ? 'bg-[#ff7f50]/20 text-[#ff7f50]'
-                              : 'bg-white/20 backdrop-blur-lg text-white')
+                          : isPro
+                              ? 'bg-cyan-500/20 text-cyan-400'
+                              : 'bg-white/20 backdrop-blur-lg text-white'
                       }`}
                       title={isProVipLocal ? t('discover.likes.tooltip.like') : likesRemaining > 0 ? t('discover.likes.tooltip.likeRemaining', { count: likesRemaining }) : t('discover.likes.tooltip.limit')}
                       disabled={likedIds.has(user.id)}
                     >
                       <Heart
                         size={16}
-                        className={(profile as any)?.accountType === 'vip' ? 'text-amber-300' : ((profile as any)?.accountType === 'pro' ? 'text-[#ff7f50]' : 'text-pink-500')}
+                        className={isVip ? 'text-amber-300' : isPro ? 'text-cyan-400' : 'text-pink-500'}
                         fill={likedIds.has(user.id) ? 'currentColor' : 'none'}
                       />
                     </button>
@@ -494,12 +500,12 @@ const DiscoverGrid: React.FC = () => {
                         e.stopPropagation();
                         handleSendMessageRequest(user.id);
                       }}
-                      className={`absolute top-0 right-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                        (profile as any)?.accountType === 'vip'
+                      className={`absolute top-0 right-0 w-7 h-7 rounded-full flex items-center justify-center ${
+                        isVip
                           ? 'bg-amber-500/30 text-amber-300'
-                          : ((profile as any)?.accountType === 'pro'
-                              ? 'bg-[#ff7f50]/20 text-[#ff7f50]'
-                              : 'bg-white/20 backdrop-blur-lg text-white')
+                          : isPro
+                              ? 'bg-cyan-500/20 text-cyan-400'
+                              : 'bg-white/20 backdrop-blur-lg text-white'
                       }`}
                       title={t('discover.messageRequest.tooltip')}
                     >

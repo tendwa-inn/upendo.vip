@@ -2,37 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Card, Title, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell, NumberInput, Switch, Button } from '@tremor/react';
 import { adminSettingsService, AppSettings } from '../services/adminSettingsService';
 import toast from 'react-hot-toast';
+import { useAppSettingsStore } from '../stores/appSettingsStore';
 import EditableCell from '../components/EditableCell';
 
 const AdminSettingsPage: React.FC = () => {
-  const [settings, setSettings] = useState<AppSettings[]>([]);
-  const [originalSettings, setOriginalSettings] = useState<AppSettings[]>([]);
+  const { settings, getSettings, setSettings } = useAppSettingsStore();
+
   const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadSettings();
-  }, []);
+    getSettings();
+  }, [getSettings]);
 
-  const loadSettings = async () => {
-    try {
-      setLoading(true);
-      const data = await adminSettingsService.getAppSettings();
-      setSettings(data);
-      setOriginalSettings(JSON.parse(JSON.stringify(data))); // Deep copy
-    } catch (error) {
-      toast.error('Failed to load settings');
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const handleSettingChange = (settingId: number, feature: keyof AppSettings, value: any) => {
-    const newSettings = settings.map(s => 
-      s.id === settingId ? { ...s, [feature]: value } : s
-    );
     setSettings(newSettings);
-    setIsDirty(true);
   };
 
   const handleSaveChanges = async () => {
@@ -40,8 +26,7 @@ const AdminSettingsPage: React.FC = () => {
       setLoading(true);
       await Promise.all(settings.map(s => adminSettingsService.updateAppSettings(s)));
       toast.success('Settings saved successfully');
-      setOriginalSettings(JSON.parse(JSON.stringify(settings))); // Deep copy
-      setIsDirty(false);
+      await getSettings();
     } catch (error) {
       toast.error('Failed to save settings');
     } finally {
@@ -50,8 +35,7 @@ const AdminSettingsPage: React.FC = () => {
   };
 
   const handleCancelChanges = () => {
-    setSettings(originalSettings);
-    setIsDirty(false);
+    getSettings();
   };
 
   const renderValue = (value: number | boolean) => {
@@ -78,17 +62,22 @@ const AdminSettingsPage: React.FC = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {[ 'swipes_per_week', 'rewind_count', 'visibility_rate', 'message_requests', 'profile_views', 'ghost_mode', 'read_receipts'].map(feature => (
+            {[ 'swipes_per_day', 'rewind_count', 'visibility_rate', 'message_requests', 'profile_views', 'ghost_mode', 'read_receipts'].map(feature => (
               <TableRow key={feature}>
                 <TableCell>{feature.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</TableCell>
-                {settings.map(setting => (
-                  <TableCell key={`${feature}-${setting.account_type}`}>
-                    <EditableCell 
-                      value={setting[feature as keyof AppSettings]} 
-                      onChange={(newValue) => handleSettingChange(setting.id, feature as keyof AppSettings, newValue)} 
-                    />
-                  </TableCell>
-                ))}
+                {['free', 'pro', 'vip'].map(tier => {
+                  const setting = settings.find(s => s.account_type === tier);
+                  if (!setting) return <TableCell key={tier}></TableCell>;
+
+                  return (
+                    <TableCell key={`${feature}-${setting.account_type}`}>
+                      <EditableCell 
+                        value={setting[feature as keyof AppSettings]} 
+                        onChange={(newValue) => handleSettingChange(setting.id, feature as keyof AppSettings, newValue)} 
+                      />
+                    </TableCell>
+                  );
+                })}
               </TableRow>
             ))}
           </TableBody>

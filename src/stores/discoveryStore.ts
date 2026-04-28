@@ -3,9 +3,12 @@ import { supabase } from '../lib/supabaseClient';
 import { useAuthStore } from './authStore';
 
 interface DiscoveryState {
-  potentialMatches: any[];
+  potentialMatches: User[];
+  isFetching: boolean; // <-- NEW
   fetchPotentialMatches: () => Promise<void>;
   removePotentialMatch: (userId: string) => void;
+  reset: () => void;
+  listenForStrikes: () => () => void;
 }
 
 const calculateAge = (dob?: string | Date) => {
@@ -21,17 +24,21 @@ const calculateAge = (dob?: string | Date) => {
   return age;
 };
 
-const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
+export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
   potentialMatches: [],
+  isFetching: false,
 
   fetchPotentialMatches: async () => {
     const { user } = useAuthStore.getState();
-    if (!user) return;
+    if (!user || get().isFetching) return;
+
+    set({ isFetching: true });
 
     // 1. Run queries in parallel to save time
-    const [matchesRes, swipedRes] = await Promise.all([
+    const [matchesRes, likedRes, dislikedRes] = await Promise.all([
       supabase.rpc('find_profiles_near_user', { p_user_id: user.id }),
-      supabase.from('likes').select('liked_id').eq('liker_id', user.id)
+      supabase.from('likes').select('liked_id').eq('liker_id', user.id),
+      supabase.from('dislikes').select('disliked_user_id').eq('user_id', user.id) // <-- NEW
     ]);
 
     if (matchesRes.error) {
@@ -39,23 +46,36 @@ const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
       return;
     }
 
-    const swipedIds = new Set(swipedRes.data?.map(s => s.liked_id) || []);
+    const likedIds = new Set(likedRes.data?.map(s => s.liked_id) || []);
+    const dislikedIds = new Set(dislikedRes.data?.map(s => s.disliked_user_id) || []); // <-- NEW
+    const swipedIds = new Set([...likedIds, ...dislikedIds]); // <-- COMBINED
 
     // 2. Filter with console logs to see WHERE profiles are being dropped
-    const baseMatches = (matchesRes.data || []).filter(p => {
-      const hasPhotos = p.photos?.length > 0;
-      const hasLocation = !!p.location_name;
-      const alreadySwiped = swipedIds.has(p.id);
-
-      // Debugging Tip: Uncomment the line below to see why users are hidden
-      // console.log(`User ${p.id}: Photos:${hasPhotos}, Loc:${hasLocation}, Swiped:${alreadySwiped}`);
-
-      return hasPhotos && hasLocation && !alreadySwiped;
+    const raw = matchesRes.data || []; 
+ 
+    console.log("🔥 RAW PROFILES FROM DB:", raw); 
+ 
+    const baseMatches = raw.filter(p => { 
+      console.log("➡️ Checking profile:", p.id); 
+ 
+      const alreadySwiped = swipedIds.has(p.id); 
+      const hasPhotos = Array.isArray(p.photos); 
+      const photosCount = p.photos?.length || 0; 
+ 
+      console.log({ 
+        id: p.id, 
+        alreadySwiped, 
+        hasPhotos, 
+        photosCount, 
+        photosValue: p.photos 
+      }); 
+ 
+      return !alreadySwiped && hasPhotos && photosCount > 0; 
     });
 
     const ids = baseMatches.map(p => p.id);
     const profilesRes = ids.length
-      ? await supabase.from('profiles').select('id,age,dob,date_of_birth,bio').in('id', ids)
+      ? await supabase.from('profiles').select('id,age,dob,date_of_birth,bio,relationship_intent,hereFor,height,religion,occupation,kids').in('id', ids)
       : { data: [], error: null };
 
     if ((profilesRes as any).error) {
@@ -77,7 +97,7 @@ const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
       };
     });
 
-    set({ potentialMatches: enrichedMatches });
+    set({ potentialMatches: enrichedMatches, isFetching: false });
   },
 
   removePotentialMatch: (userId: string) => {
@@ -85,8 +105,32 @@ const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
       potentialMatches: state.potentialMatches.filter(match => match.id !== userId),
     }));
   },
+
+  listenForStrikes: () => {
+    const channel = supabase
+      .channel('strikes-listener')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `type=eq.system` },
+        (payload) => {
+          console.log('System notification received in discovery store!', payload);
+          // Check if this is a strike notification by looking for keywords in the message
+          const message = payload.new.message as string;
+          if (message && (message.includes('strike') || message.includes('flagged'))) {
+            console.log('Strike notification detected in discovery store, refreshing potential matches...');
+            // Refetch potential matches to remove users who were unmatched due to strikes
+            get().fetchPotentialMatches();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
 }));
 
 
 
-export { useDiscoveryStore };
+

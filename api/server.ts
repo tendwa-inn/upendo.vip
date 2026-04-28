@@ -3,8 +3,10 @@
  */
 import app from './app.js';
 import sendOtp from './send-otp';
+import handleWebviewClick from './webview-click.js';
 
 app.post('/api/send-otp', sendOtp);
+app.post('/api/webviewClick', handleWebviewClick);
 
 /**
  * start server with port

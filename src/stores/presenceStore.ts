@@ -27,6 +27,15 @@ const usePresenceStore = create<PresenceState>((set) => ({
         const newState = channel.presenceState();
         set({ onlineUsers: newState });
       })
+      .on('presence', { event: 'leave' }, async ({ key, leftPresences }) => {
+        // When a user leaves, update their last_active timestamp
+        if (key === currentUser.id) {
+          await supabase
+            .from('profiles')
+            .update({ last_active_at: new Date().toISOString() })
+            .eq('id', currentUser.id);
+        }
+      })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await channel.track({ online_at: new Date().toISOString() });
@@ -37,7 +46,7 @@ const usePresenceStore = create<PresenceState>((set) => ({
     const interval = setInterval(async () => {
       await supabase
         .from('profiles')
-        .update({ last_active: new Date().toISOString() })
+        .update({ last_active_at: new Date().toISOString() }) // ONLY update last_active_at
         .eq('id', currentUser.id);
     }, 30000); // Every 30 seconds
 

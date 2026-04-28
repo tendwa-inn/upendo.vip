@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Sun, Moon, User, Camera, Settings, Crown, Shield, Phone, MapPin, Heart, LogOut, Edit3, CheckCircle, Star, Plus, BookOpen, Ruler, GlassWater, Cigarette, Briefcase, X, Slash, AlertTriangle, Ticket } from 'lucide-react';
+import { useModalStore } from '../stores/modalStore';
+import PopularityModal from '../components/modals/PopularityModal';
+import { Sun, Moon, User, Camera, Settings, Crown, Shield, Phone, MapPin, Heart, LogOut, Edit3, CheckCircle, Star, Plus, BookOpen, Ruler, GlassWater, Cigarette, Briefcase, X, Slash, AlertTriangle, Ticket, CircleUserRound, Scale, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useUiStore, ButtonStyle } from '../stores/uiStore';
@@ -10,12 +12,15 @@ import { useProfileStore } from '../stores/profileStore';
 import { useThemeStore } from '../stores/themeStore';
 import toast from 'react-hot-toast';
 import { useAppSettingsStore } from '../stores/appSettingsStore';
+import { getPopularityScore } from '../services/popularityService';
+import { promoService } from '../services/promoService';
 import { supabase } from '../utils/supabase';
 import SavedPromos from '../components/SavedPromos';
 import PromoCodeModal from '../components/modals/PromoCodeModal';
 import ProfileCompletionModal from '../components/modals/ProfileCompletionModal';
 import PhotoViewerModal from '../components/modals/PhotoViewerModal';
 import IndividualEditModal from '../components/modals/IndividualEditModal';
+import PhotoCropModal from '../components/PhotoCropModal';
 import DeactivationModal from '../components/modals/DeactivationModal';
 import CongratulationsModal from '../components/modals/CongratulationsModal';
 import UpgradeModal from '../components/modals/UpgradeModal';
@@ -26,17 +31,30 @@ const ProfilePage: React.FC = () => {
   const { i18n } = useTranslation();
 
 
-  const { user, profile, isAdmin, signOut, updateUserProfile, checkUser } = useAuthStore();
+  const { user, profile, isAdmin, signOut, updateUserProfile, checkUser, isPro, isVip } = useAuthStore();
+  const accountType = useAuthStore(state => state.profile?.account_type) || 'free';
 
   const { } = useSwipeStore();
   const { theme, toggleTheme } = useThemeStore();
 
   const navigate = useNavigate();
 
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-[#22090E] to-[#2E0C13]">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white"></div>
+      </div>
+    );
+  }
+
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
   const [isPhotoUploaderOpen, setIsPhotoUploaderOpen] = useState(false);
+  const { openPopularityModal } = useModalStore();
+  const { isPopularityModalOpen, closePopularityModal } = useModalStore();
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [currentPhotoToCrop, setCurrentPhotoToCrop] = useState<string | null>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [viewerStartIndex, setViewerStartIndex] = useState(0);
   const [isDeactivationModalOpen, setIsDeactivationModalOpen] = useState(false);
@@ -48,6 +66,7 @@ const ProfilePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState((profile as any)?.notifications_enabled ?? true);
   const [isLangMenuOpen, setLangMenuOpen] = useState(false);
+  const [isLocationScopeMenuOpen, setLocationScopeMenuOpen] = useState(false);
   const isProfileComplete = React.useMemo(() => {
     return !!profile?.bio && !!profile?.location?.name && !!profile?.hereFor && (profile?.photos?.length || 0) >= 3;
   }, [profile]);
@@ -60,19 +79,63 @@ const ProfilePage: React.FC = () => {
     return 'Not specified';
   };
 
-  React.useEffect(() => {
-    if (profile && !profile.lookingFor) {
-      setIsCompletionModalOpen(true);
-    }
-  }, [profile]);
+  // Removed automatic modal opening - now only opens on button click
+
+  const { settings, getSettings } = useAppSettingsStore();
 
   React.useEffect(() => {
     getSettings();
   }, []);
 
+  const handleOpenCropper = (photoUrl: string) => {
+    setCurrentPhotoToCrop(photoUrl);
+    setIsCropModalOpen(true);
+  };
+
+  const handleCropComplete = async (croppedImageUrl: string) => {
+    if (!currentPhotoToCrop) return;
+
+    try {
+      const response = await fetch(croppedImageUrl);
+      const blob = await response.blob();
+      const file = new File([blob], `cropped_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      
+      const fileName = `${user.id}/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+
+      const newPhotos = profile.photos?.map(p => p === currentPhotoToCrop ? publicUrl : p) || [];
+      await updateUserProfile({ photos: newPhotos });
+
+      // Clean up old photo from storage
+      const oldPhotoName = currentPhotoToCrop.split('/').pop();
+      if (oldPhotoName) {
+        await supabase.storage.from('avatars').remove([`${user.id}/${oldPhotoName}`]);
+      }
+
+      toast.success('Photo updated successfully!');
+    } catch (error) {
+      console.error('Error updating photo:', error);
+      toast.error('Failed to update photo');
+    } finally {
+      setIsCropModalOpen(false);
+      setCurrentPhotoToCrop(null);
+    }
+  };
+
   const handleSetDP = (photoUrl: string) => {
     const newPhotos = [photoUrl, ...(profile.photos?.filter(p => p !== photoUrl) || [])];
     updateUserProfile({ photos: newPhotos });
+  };
+
+  const handleEditPhoto = (photoUrl: string) => {
+    setIsViewerOpen(false);
+    handleOpenCropper(photoUrl);
   };
 
   const handleDeletePhoto = (photoUrl: string) => {
@@ -90,7 +153,7 @@ const ProfilePage: React.FC = () => {
 
     try {
       await updateUserProfile({ [field]: value });
-      toast.success('Profile updated!');
+      // Success toast is handled by updateUserProfile function
     } catch (error) {
       toast.error('Failed to update profile.');
     }
@@ -103,36 +166,47 @@ const ProfilePage: React.FC = () => {
     try {
       navigator.geolocation.getCurrentPosition(async (position) => {
         const { latitude, longitude } = position.coords;
+        const { user, checkUser } = useAuthStore.getState();
+
+        if (!user) {
+          toast.error("You must be logged in to update your location.");
+          setIsLoading(false);
+          return;
+        }
+
         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
         const data = await response.json();
         
         if (data && data.address) {
-          const locationName = `${data.address.city || data.address.town || ''}, ${data.address.country}`;
-          await updateUserProfile({
-            location: { 
-              name: locationName,
-              longitude: longitude,
-              latitude: latitude
-            }
+          const city = data.address.city || data.address.town || '';
+        const locationName = city ? `${city}, ${data.address.country}` : data.address.country;
+          const locationData = {
+            name: locationName,
+            longitude,
+            latitude,
+          };
+
+          // Use the centralized updateUserProfile function
+          await updateUserProfile({ location: locationData }, () => {
+            toast.success("Location updated successfully!");
           });
-          setIsLoading(false); // Add this line
+
+          setIsLoading(false);
         } else {
           toast.error("Could not determine your location.");
-          setIsLoading(false); // And this one
+          setIsLoading(false);
         }
       }, (error) => {
-        toast.error("Could not access your location. Please enable location services in your browser.");
+        toast.error(`Could not access your location: ${error.message}`);
         setIsLoading(false);
       });
     } catch (error) {
-      toast.error("Failed to update location.");
-      setIsLoading(false); // And this one
-    } finally {
-      // The finally block is no longer necessary as we handle it in all branches
+      toast.error("An unexpected error occurred while fetching location data.");
+      setIsLoading(false);
     }
   };
 
-  const ProfileField = ({ field, value, label, isRequired = false }) => (
+  const ProfileField = ({ field, value, label, isRequired = false, alwaysEditable = false }) => (
     <div className="mb-4">
       <div className="flex justify-between items-center">
         <h4 className="text-sm font-medium text-gray-300">{label}</h4>
@@ -140,7 +214,7 @@ const ProfilePage: React.FC = () => {
           {!value && isRequired && (
             <span className="text-xs text-red-400">{i18n.t('required')}</span>
           )}
-          <button onClick={() => setEditingField(field)} className="p-1.5 text-gray-400 hover:text-white">
+          <button onClick={() => setEditingField(field)} className="p-1.5 text-gray-400 hover:text-white" disabled={!alwaysEditable && !!value}>
             {value ? <Edit3 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
           </button>
         </div>
@@ -170,7 +244,19 @@ const ProfilePage: React.FC = () => {
     }
   };
 
-  const { settings, getSettings } = useAppSettingsStore();
+  const [livePopularityScore, setLivePopularityScore] = useState(profile?.popularity_score || 75);
+
+  useEffect(() => {
+    if (isPopularityModalOpen) {
+      const fetchScore = async () => {
+        if (user?.id) {
+          const score = await getPopularityScore(user.id);
+          setLivePopularityScore(score);
+        }
+      };
+      fetchScore();
+    }
+  }, [isPopularityModalOpen, user?.id]);
 
   if (!profile) {
     return (
@@ -180,10 +266,28 @@ const ProfilePage: React.FC = () => {
     );
   }
 
-  const currentSubscription = settings.find(s => s.account_type === (profile?.accountType || 'free')) || settings.find(s => s.account_type === 'free');
+  const currentSubscription = settings.find(s => s.account_type === (profile?.account_type || 'free')) || settings.find(s => s.account_type === 'free');
   const SubscriptionIcon = currentSubscription ? (currentSubscription.account_type === 'vip' ? Crown : Shield) : User;
 
   const tierHierarchy = { free: 0, pro: 1, vip: 2 };
+
+  const getDaysUntilExpiration = () => {
+    if (!profile?.subscriptionExpiresAt) return null;
+    const expiresAt = new Date(profile.subscriptionExpiresAt);
+    const now = new Date();
+    const diffTime = expiresAt.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  const getSubscriptionStatus = () => {
+    const daysLeft = getDaysUntilExpiration();
+    if (daysLeft === null) return '';
+    if (daysLeft < 0) return ` (Expired ${Math.abs(daysLeft)} days ago)`;
+    if (daysLeft === 0) return ' (Expires today)';
+    if (daysLeft === 1) return ' (Expires tomorrow)';
+    return ` (Expires in ${daysLeft} days)`;
+  };
 
   const { buttonStyle, setButtonStyle } = useUiStore();
 
@@ -230,6 +334,16 @@ const ProfilePage: React.FC = () => {
     signOut();
   };
 
+  const handleRefreshSubscription = async () => {
+    try {
+      await checkUser();
+      toast.success('Subscription status refreshed!');
+    } catch (error) {
+      toast.error('Failed to refresh subscription status');
+      console.error('Error refreshing subscription:', error);
+    }
+  };
+
   const handleApplyPromoCode = async (code: string) => {
     try {
       if (code.toUpperCase() === 'NLG36QM4FYR') {
@@ -272,33 +386,42 @@ const ProfilePage: React.FC = () => {
         return toast.error('You have already used this promo code.');
       }
 
-      const expires_at = new Date();
-      expires_at.setDate(expires_at.getDate() + promoCode.duration_days);
+      const promoType = promoCode.type?.toLowerCase();
 
-    const { error: insertError } = await supabase.from('user_promos').insert({
-      user_id: user.id,
-      promo_code_id: promoCode.id,
-      expires_at: expires_at.toISOString(),
-    });
+      // Check hierarchy to prevent downgrades
+      const currentTier = tierHierarchy[profile.accountType || 'free'];
+      const promoTier = tierHierarchy[promoType.replace('_account', '')] || 0;
+      
+      if (promoTier < currentTier) {
+        return toast.error('You already have a higher tier subscription!');
+      }
 
-      if (insertError) throw insertError;
+      // Calculate expiration date with stacking logic
+      let expires_at = new Date();
+      const currentExpiration = profile.subscriptionExpiresAt ? new Date(profile.subscriptionExpiresAt) : null;
+      const now = new Date();
 
-    const promoType = promoCode.type?.toLowerCase();
+      // If current subscription is still active, stack on top of it
+      if (currentExpiration && currentExpiration > now) {
+        expires_at = new Date(currentExpiration.getTime() + promoCode.duration_days * 24 * 60 * 60 * 1000);
+      } else {
+        // Otherwise, start from today
+        expires_at.setDate(expires_at.getDate() + promoCode.duration_days);
+      }
+
+      await promoService.applyPromoCode(user.id, promoCode.id, expires_at.toISOString());
+
+
+
     if (promoType === 'vip_account' || promoType === 'pro_account') {
       await updateUserProfile(
-        { account_type: promoType.replace('_account', ''), subscription_expires_at: expires_at.toISOString() },
-        () => {
-          setRedeemedPromoDetails({ name: promoCode.name, description: promoCode.description });
-          setIsCongratulationsModalOpen(true);
-          checkUser();
-          supabase.from('notifications').insert({
-            user_id: user.id,
-            type: 'promo_redemption',
-            title: `Promo Redeemed: ${promoCode.name}`,
-            message: `You have successfully redeemed the promo code "${promoCode.name}". Enjoy your reward! Expires on ${new Date(expires_at).toLocaleDateString()}`,
-          }).then();
-        }
+        { account_type: promoType.replace('_account', ''), subscription_expires_at: expires_at.toISOString() }
       );
+      
+      setRedeemedPromoDetails({ name: promoCode.name, description: promoCode.description });
+      setIsCongratulationsModalOpen(true);
+      
+      
     } else if (promoType === 'profile_views') {
       const effect = promoCode.effect || {};
       const days = effect.days || promoCode.duration_days || 7;
@@ -307,31 +430,21 @@ const ProfilePage: React.FC = () => {
       profileViewsExpires.setDate(profileViewsExpires.getDate() + days);
 
       await updateUserProfile(
-        { can_view_profiles_expires_at: profileViewsExpires.toISOString() },
-        () => {
-          setRedeemedPromoDetails({
-            name: promoCode.name,
-            description: `${promoCode.description}. You can now view profiles and see who viewed yours for ${days} days!`
-          });
-          setIsCongratulationsModalOpen(true);
-          checkUser();
-          supabase.from('notifications').insert({
-            user_id: user.id,
-            type: 'promo_redemption',
-            title: `Promo Redeemed: ${promoCode.name}`,
-            message: `You can now view profiles and see who viewed yours until ${new Date(profileViewsExpires).toLocaleDateString()}`,
-          }).then();
-        }
+        { can_view_profiles_expires_at: profileViewsExpires.toISOString() }
       );
+      
+      setRedeemedPromoDetails({
+        name: promoCode.name,
+        description: `${promoCode.description}. You can now view profiles and see who viewed yours for ${days} days!`
+      });
+      setIsCongratulationsModalOpen(true);
+      checkUser();
+      
+      
     } else {
       setRedeemedPromoDetails({ name: promoCode.name, description: promoCode.description });
       setIsCongratulationsModalOpen(true);
-      supabase.from('notifications').insert({
-        user_id: user.id,
-        type: 'promo_redemption',
-        title: `Promo Redeemed: ${promoCode.name}`,
-        message: `You have successfully redeemed the promo code "${promoCode.name}". Enjoy your reward! Expires on ${new Date(expires_at).toLocaleDateString()}`,
-      }).then();
+      
     }
 
     } catch (error) {
@@ -384,11 +497,9 @@ const ProfilePage: React.FC = () => {
   const profileCompletion = calculateProfileCompletion();
   const maxPhotos = (profile?.accountType === 'pro' || profile?.accountType === 'vip') ? 10 : 6;
 
-  const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
-  const isVip = acct === 'vip';
-  const isPro = acct === 'pro';
+
   return (
-    <div className={`min-h-screen p-4 pb-28 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : (isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]')} text-white`}>
+    <div className="p-4 text-white">
       <div className="max-w-4xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -428,6 +539,7 @@ const ProfilePage: React.FC = () => {
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-bold text-white">{i18n.t('profile.myProfile')}</h1>
             <div className="flex items-center gap-2">
+
               <button
                 onClick={toggleTheme}
                 className="p-2 bg-white/20 text-white rounded-full hover:bg-white/30 transition-all duration-300"
@@ -435,21 +547,39 @@ const ProfilePage: React.FC = () => {
                 {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
               </button>
               <button
-                onClick={() => setIsEditing(!isEditing)}
-                className="p-2 bg-white/20 text-white rounded-full hover:bg-white/30 transition-all duration-300"
+                onClick={openPopularityModal}
+                className={`p-2 rounded-full transition-all duration-300 ${
+                  isVip
+                    ? 'bg-amber-400 text-black hover:bg-amber-500'
+                    : isPro
+                    ? 'bg-cyan-400 text-black hover:bg-cyan-500'
+                    : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
               >
-                <Edit3 className="w-5 h-5" />
+                <Scale className="w-5 h-5" />
               </button>
             </div>
           </div>
 
           <div className="flex items-center space-x-6 mb-6">
-            <div className="relative w-24 h-24 rounded-full mb-4"> 
-            <img src={profile.photos?.[0] || '/placeholder.png'} alt="Profile" className="w-24 h-24 rounded-full object-cover" />
-            <button 
-              onClick={() => setIsPhotoUploaderOpen(true)}
-              className={`absolute bottom-0 right-0 p-2 rounded-full transition-all duration-300 ${
-                isVip ? 'bg-amber-400 text-black hover:bg-amber-500' : (isPro ? 'bg-sky-500 text-black hover:bg-sky-400' : 'bg-pink-600 text-white hover:bg-pink-700')
+            <div className="relative w-24 h-24 rounded-full mb-4 bg-gray-800 flex items-center justify-center">
+              {profile.photos?.[0] ? (
+                <img src={profile.photos[0]} alt="Profile" className="w-24 h-24 rounded-full object-cover" />
+              ) : (
+                                <CircleUserRound
+                  className={`w-16 h-16 ${
+                    isVip
+                      ? 'text-amber-400'
+                      : isPro
+                      ? 'text-sky-500'
+                      : 'text-pink-600'
+                  }`}
+                />
+              )}
+              <button 
+                onClick={() => setIsPhotoUploaderOpen(true)}
+                className={`absolute bottom-0 right-0 p-2 rounded-full transition-all duration-300 ${
+                isVip ? 'bg-amber-400 text-black hover:bg-amber-500' : (isPro ? 'bg-[#ff7f50] text-white hover:bg-[#ff5e57]' : 'bg-pink-600 text-white hover:bg-pink-700')
               }`}
             >
               <Camera className="w-4 h-4" />
@@ -467,6 +597,7 @@ const ProfilePage: React.FC = () => {
               <div className="flex items-center space-x-2 mb-3">
                 <MapPin className="w-4 h-4 text-gray-300" />
                 <span className="text-gray-300">{profile.location?.name || i18n.t('general.notSpecified')}</span>
+                {!profile.location?.name && <span className="text-xs text-red-400">Required</span>}
                 <button onClick={handleUpdateLocation} disabled={isLoading || !!(profile.location && profile.location.name)} className="p-1.5 text-gray-400 hover:text-white disabled:opacity-50">
                   {isLoading ? <div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></div> : <Edit3 className="w-4 h-4" />}
                 </button>
@@ -475,7 +606,7 @@ const ProfilePage: React.FC = () => {
               <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/20`}>
                 <SubscriptionIcon className={`w-4 h-4 text-white`} />
                 <span className={`text-sm font-medium text-white`}>
-                  {currentSubscription?.account_type}
+                  {currentSubscription?.account_type}{getSubscriptionStatus()}
                 </span>
               </div>
             </div>
@@ -484,8 +615,8 @@ const ProfilePage: React.FC = () => {
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-4">
               <h3 className="text-lg font-semibold text-white">{i18n.t('profile.myPhotos')}</h3>
-              {(!profile.photos || profile.photos.length === 0) && (
-                <span className="text-xs text-red-400">{i18n.t('required')}</span>
+              {(!profile.photos || profile.photos.length < 3) && (
+                <span className="text-xs text-red-400">Required (3 minimum)</span>
               )}
             </div>
             <div className="grid grid-cols-3 gap-4">
@@ -495,10 +626,16 @@ const ProfilePage: React.FC = () => {
                   <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
                   <img src={photo} alt={`User photo ${index + 1}`} className="w-full h-full object-cover" />
                   <button 
-                    onClick={() => handleSetDP(photo)}
+                    onClick={(e) => { e.stopPropagation(); handleSetDP(photo); }}
                     className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-full text-white hover:bg-black/75 transition-all duration-300 z-10"
                   >
                     <Star className={`w-4 h-4 ${profile.photos?.[0] === photo ? 'text-yellow-400' : 'text-white'}`} />
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleOpenCropper(photo); }}
+                    className="absolute bottom-2 right-2 bg-black/50 p-1.5 rounded-full text-white hover:bg-black/75 transition-all duration-300 z-10"
+                  >
+                    <Edit3 className="w-4 h-4" />
                   </button>
                   <button 
                     onClick={() => handleDeletePhoto(photo)}
@@ -521,9 +658,12 @@ const ProfilePage: React.FC = () => {
           </div>
 
           <div className="mb-6">
-            <h3 className="text-lg font-semibold text-white mb-4">{i18n.t('aboutMe')}</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-white">{i18n.t('aboutMe')}</h3>
+              {!profile.bio && <span className="text-xs text-red-400 invisible">Required</span>}
+            </div>
             <ProfileField field="bio" value={profile.bio} label={i18n.t('aboutMe')} isRequired={true} />
-            <ProfileField field="hereFor" value={profile.hereFor} label={i18n.t('profile.sections.hereFor')} isRequired={false} />
+            <ProfileField field="hereFor" value={profile.hereFor} label={i18n.t('profile.sections.hereFor')} isRequired={true} alwaysEditable={true} />
             <ProfileField field="occupation" value={(profile as any).occupation} label={i18n.t('work')} isRequired={false} />
             <ProfileField field="education" value={profile.education} label={i18n.t('education')} isRequired={false} />
             <ProfileField field="height" value={profile.height} label={i18n.t('height')} isRequired={false} />
@@ -535,43 +675,7 @@ const ProfilePage: React.FC = () => {
             <ProfileField field="firstDate" value={profile.firstDate} label={i18n.t('profile.details.firstDate')} isRequired={false} />
           </div>
 
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-white mb-4">{i18n.t('spotlights.title')}</h3>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="p-4 bg-white/50 rounded-2xl">
-                <h4 className="font-semibold text-white mb-2">{i18n.t('spotlights.delicacies')}</h4>
-                {profile.aboutMe?.delicacies?.map((item, index) => (
-                  <div key={index} className="flex items-center space-x-3 mb-2">
-                    <p className="text-gray-300">{item.food}</p>
-                  </div>
-                ))}
-                {!profile.aboutMe?.delicacies?.length && (
-                  <p className="text-gray-400 text-sm">{i18n.t('spotlights.noDelicacies')}</p>
-                )}
-                {isEditing && (
-                  <button className="w-full mt-2 py-2 border-2 border-dashed border-gray-500 text-gray-300 rounded-lg hover:bg-white/10 transition-colors">
-                    <Plus className="w-4 h-4 inline mr-2" /> {i18n.t('spotlights.addDelicacy')}
-                  </button>
-                )}
-              </div>
 
-              <div className="p-4 bg-white/50 rounded-2xl">
-                <h4 className="font-semibold text-white mb-2">{i18n.t('spotlights.travel')}</h4>
-                {profile.aboutMe?.travel?.length > 0 ? profile.aboutMe.travel.map((item, index) => (
-                  <div key={index} className="mb-2">
-                    <p className="font-semibold text-gray-200">{item.place}</p>
-                  </div>
-                )) : (
-                  <p className="text-gray-400 text-sm">{i18n.t('spotlights.noTravel')}</p>
-                )}
-                {isEditing && (
-                  <button className="w-full mt-2 py-2 border-2 border-dashed border-gray-500 text-gray-300 rounded-lg hover:bg-white/10 transition-colors">
-                    <Plus className="w-4 h-4 inline mr-2" /> {i18n.t('spotlights.addTravel')}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
 
         </motion.div>
 
@@ -582,28 +686,37 @@ const ProfilePage: React.FC = () => {
           className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 mb-6"
         >
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-white">{i18n.t('subscription')}</h3>
-            <Crown className="w-6 h-6 text-yellow-400" />
-          </div>
+              <h3 className="text-xl font-bold text-white">{i18n.t('subscription')}</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRefreshSubscription}
+                  className="p-2 bg-white/20 text-white rounded-full hover:bg-white/30 transition-all duration-300"
+                  title="Refresh subscription status"
+                >
+                  <RefreshCw className="w-5 h-5" />
+                </button>
+                <Crown className="w-6 h-6 text-yellow-400" />
+              </div>
+            </div>
           
           <div className="grid md:grid-cols-3 gap-4">
             {[...settings].sort((a, b) => tierHierarchy[a.account_type] - tierHierarchy[b.account_type]).map(setting => {
               const Icon = setting.account_type === 'vip' ? Crown : setting.account_type === 'pro' ? Shield : User;
-              const isCurrent = (profile?.accountType || 'free') === setting.account_type;
+              const isCurrent = accountType === setting.account_type;
               
               return (
                 <div
                   key={setting.account_type}
                   className={`p-4 rounded-2xl border-2 transition-all duration-300 ${
                     isCurrent
-                      ? 'border-pink-500 bg-white/20'
+                      ? `${isVip ? 'border-amber-400' : isPro ? 'border-cyan-400' : 'border-pink-500'} bg-white/20`
                       : 'border-transparent bg-white/10 hover:bg-white/20'
                   }`}
                 >
                   <div className="flex items-center space-x-2 mb-3">
                     <Icon className={`w-5 h-5 text-white`} />
                     <h4 className="font-semibold text-white">{setting.account_type.toUpperCase()}</h4>
-                    {isCurrent && <CheckCircle className="w-5 h-5 text-pink-500" />}
+                    {isCurrent && <CheckCircle className={`w-5 h-5 ${isVip ? 'text-amber-400' : isPro ? 'text-cyan-400' : 'text-pink-500'}`} />}
                   </div>
                   
                   <ul className="space-y-1 mb-4">
@@ -648,7 +761,7 @@ const ProfilePage: React.FC = () => {
                   </ul>
                   
                   {isCurrent ? (
-                    <div className="text-center py-2 text-sm font-medium text-pink-400">{i18n.t('subscription.currentPlan')}</div>
+                    <div className={`text-center py-2 text-sm font-medium ${isVip ? 'text-amber-400' : isPro ? 'text-cyan-400' : 'text-pink-400'}`}>{i18n.t('subscription.currentPlan')}</div>
                   ) : tierHierarchy[setting.account_type] > tierHierarchy[profile.accountType || 'free'] ? (
             <button
               onClick={() => setIsUpgradeModalOpen(true)} className={`w-full py-2 rounded-xl transition-all duration-300 text-sm font-medium ${
@@ -761,45 +874,37 @@ const ProfilePage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-white/20 rounded-xl">
+            <div className="flex items-center justify-between p-3 bg-white/20 rounded-xl relative">
               <div className="flex items-center space-x-3">
                 <Settings className="w-5 h-5 text-gray-300" />
-                <span className="text-white">{i18n.t('settings.locationScope')}</span>
+                <span className="text-white">Location Scope</span>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { try { localStorage.setItem('locationScope','nearby'); } catch {}; toast.success(i18n.t('location.scope.nearby') || 'Nearby'); }}
-                  className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-                    (localStorage.getItem('locationScope') || 'nearby') === 'nearby'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-white/10 text-white/70 hover:bg-white/20'
-                  }`}
-                >
-                  {i18n.t('location.scope.nearby') || 'Nearby'}
-                </button>
-                <button
-                  onClick={() => { try { localStorage.setItem('locationScope','country'); } catch {}; toast.success(i18n.t('location.scope.country') || 'Country'); }}
-                  disabled={!isPro && !isVip}
-                  className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-                    (localStorage.getItem('locationScope') === 'country')
-                      ? 'bg-white/20 text-white'
-                      : 'bg-white/10 text-white/70 hover:bg-white/20'
-                  } ${(!isPro && !isVip) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {i18n.t('location.scope.country') || 'Country'}
-                </button>
-                <button
-                  onClick={() => { try { localStorage.setItem('locationScope','global'); } catch {}; toast.success(i18n.t('location.scope.global') || 'Global'); }}
-                  disabled={!isVip}
-                  className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-                    (localStorage.getItem('locationScope') === 'global')
-                      ? 'bg-white/20 text-white'
-                      : 'bg-white/10 text-white/70 hover:bg-white/20'
-                  } ${(!isVip) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {i18n.t('location.scope.global') || 'Global'}
-                </button>
-              </div>
+              <button
+                onClick={() => setLocationScopeMenuOpen(!isLocationScopeMenuOpen)}
+                className="px-4 py-1 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors duration-300 text-sm capitalize"
+              >
+                {localStorage.getItem('locationScope') || 'nearby'}
+              </button>
+              {isLocationScopeMenuOpen && (
+                <div className="absolute right-3 top-full mt-2 w-48 bg-white/10 backdrop-blur-lg rounded-xl p-2 text-left z-10">
+                  {['nearby', 'country', 'global'].map(scope => (
+                    <button
+                      key={scope}
+                      onClick={() => {
+                        try { localStorage.setItem('locationScope', scope); } catch {};
+                        toast.success(`Location scope set to ${scope}`);
+                        setLocationScopeMenuOpen(false);
+                      }}
+                      disabled={(scope === 'country' && !isPro && !isVip) || (scope === 'global' && !isVip)}
+                      className={`block w-full text-left px-3 py-1.5 rounded-md hover:bg-white/20 transition-colors capitalize ${
+                        localStorage.getItem('locationScope') === scope ? 'bg-white/20' : ''
+                      } ${((scope === 'country' && !isPro && !isVip) || (scope === 'global' && !isVip)) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {scope}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between p-3 bg-white/20 rounded-xl">
@@ -868,12 +973,12 @@ const ProfilePage: React.FC = () => {
               }`}>{i18n.t('swipe.menu.upendoColor')}</button>
             <button 
               onClick={() => setButtonStyle('white-clean')}
-              className={`px-4 py-2 rounded-xl text-white font-semibold transition-all ${buttonStyle === 'white-clean' ? 'bg-pink-500' : 'bg-white/20'}`}>
+              className={`px-4 py-2 rounded-xl text-white font-semibold transition-all ${buttonStyle === 'white-clean' ? (isVip ? 'bg-amber-500' : isPro ? 'bg-[#ff7f50]' : 'bg-pink-500') : 'bg-white/20'}`}>
               {i18n.t('swipe.menu.whiteClean')}
             </button>
             <button 
               onClick={() => setButtonStyle('vintage')}
-              className={`px-4 py-2 rounded-xl text-white font-semibold transition-all ${buttonStyle === 'vintage' ? 'bg-pink-500' : 'bg-white/20'}`}>
+              className={`px-4 py-2 rounded-xl text-white font-semibold transition-all ${buttonStyle === 'vintage' ? (isVip ? 'bg-amber-500' : isPro ? 'bg-[#ff7f50]' : 'bg-pink-500') : 'bg-white/20'}`}>
               {i18n.t('swipe.menu.vintage')}
             </button>
           </div>
@@ -894,9 +999,7 @@ const ProfilePage: React.FC = () => {
           </button>
         </motion.div>
       </div>
-      {isCompletionModalOpen && (
-        <ProfileCompletionModal isOpen={isCompletionModalOpen} onClose={handleCompletionModalClose} />
-      )}
+      
       {isPhotoUploaderOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
           <div className="bg-gradient-to-b from-[#2E0C13] to-[#22090E] rounded-2xl p-6 w-full max-w-md text-white border border-white/10">
@@ -918,7 +1021,9 @@ const ProfilePage: React.FC = () => {
           photos={profile.photos}
           startIndex={viewerStartIndex}
           onClose={() => setIsViewerOpen(false)}
-          onAdd={() => {
+          onSetDP={handleSetDP}
+          onEdit={handleEditPhoto}
+          onAddPhoto={() => {
             setIsViewerOpen(false);
             setIsPhotoUploaderOpen(true);
           }}
@@ -926,7 +1031,17 @@ const ProfilePage: React.FC = () => {
             handleDeletePhoto(photoUrl);
             setIsViewerOpen(false);
           }}
-          onSetDP={() => {}}
+        />
+      )}
+      {isCropModalOpen && currentPhotoToCrop && (
+        <PhotoCropModal
+          isOpen={isCropModalOpen}
+          onClose={() => setIsCropModalOpen(false)}
+          onCropComplete={handleCropComplete}
+          imageUrl={currentPhotoToCrop}
+          aspectRatio={1}
+          circularCrop={false}
+          title="Crop Your Photo"
         />
       )}
       {isDeactivationModalOpen && (
@@ -949,7 +1064,22 @@ const ProfilePage: React.FC = () => {
         promoDescription={redeemedPromoDetails.description}
       />
 
+      {isCompletionModalOpen && (
+        <ProfileCompletionModal
+          profile={profile}
+          onClose={() => setIsCompletionModalOpen(false)}
+        />
+      )}
+
       {isUpgradeModalOpen && <UpgradeModal onClose={() => setIsUpgradeModalOpen(false)} />}
+
+      <PopularityModal 
+        isOpen={isPopularityModalOpen}
+        onClose={closePopularityModal}
+        popularityScore={livePopularityScore}
+        strikes={profile.strikes || 0}
+        accountType={accountType}
+      />
 
       <motion.div 
         initial={{ opacity: 0, y: 20 }}

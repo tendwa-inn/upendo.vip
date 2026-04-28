@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { useOnboardingStore } from '../../stores/onboardingStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabaseClient'; // Import supabase
+import toast from 'react-hot-toast'; // Import toast
 
 const interestsList = [
   'Reading', 'Traveling', 'Movies', 'Music', 'Cooking', 'Dancing', 'Art', 'Photography',
@@ -27,21 +29,23 @@ const InterestsStep: React.FC = () => {
   };
 
   const handleNext = async () => {
-    try {
-      updateFormData({ interests: selectedInterests });
+    // Re-instating the secure RPC call to create the profile at the end of onboarding.
+    // This is the correct, stable architecture.
+    const profileData = {
+      ...formData,
+      interests: selectedInterests,
+    };
 
-      await updateUserProfile({
-        ...formData,
-        interests: selectedInterests,
-        onboarding_completed: true
-      });
+    const { error } = await supabase.rpc('create_user_profile_onboarding', { data: profileData });
 
+    if (error) {
+      console.error("Failed to create profile:", error);
+      toast.error("There was an error creating your profile.");
+    } else {
+      // Manually trigger a profile refresh and complete onboarding.
+      // The RouteGuard will handle the navigation.
+      await useAuthStore.getState().checkUser();
       completeOnboarding();
-      navigate('/find', { replace: true });
-    } catch (error) {
-      console.error(error);
-      completeOnboarding();
-      navigate('/find', { replace: true });
     }
   };
 

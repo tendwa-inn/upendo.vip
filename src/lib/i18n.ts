@@ -4,11 +4,14 @@ import { initReactI18next } from 'react-i18next';
 const resources = {
   en: {
     translation: {
-      findYourPerfectMatch: 'Find your perfect match',
+      findYourPerfectMatch: 'Upendo',
+      appPurpose: 'The No Ghost Dating App',
+      appDescription: 'Upendo is a dating app that helps singles in Lusaka, Zambia connect and find meaningful relationships.',
       continueWithGoogle: 'Continue with Google',
       language: 'Language',
       termsOfService: 'Terms of Service',
       products: 'Products',
+      privacyPolicy: 'Privacy Policy',
       copyright: '© 2026 Upendo. All rights reserved.',
       find: 'Find',
       discover: 'Discover',

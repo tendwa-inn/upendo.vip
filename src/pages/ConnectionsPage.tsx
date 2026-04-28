@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '../lib/utils';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabaseClient';
 import { User } from '../types';
 import { MapPin, Phone, Ghost } from 'lucide-react';
 import toast from 'react-hot-toast';
+import ConnectionCard from '../components/ConnectionCard';
+import PhotoViewerModal from '../components/modals/PhotoViewerModal';
 
 interface Connection {
   id: string;
@@ -24,11 +27,19 @@ interface Connection {
   created_at: string;
 }
 
+import { getTheme } from '../styles/theme';
+
 const ConnectionsPage: React.FC = () => {
   const { profile } = useAuthStore();
   const { t } = useTranslation();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [viewerPhotos, setViewerPhotos] = useState<string[]>([]);
+  const [viewerStartIndex, setViewerStartIndex] = useState(0);
+
+  const accountType = (profile as any)?.account_type || (profile as any)?.subscription || 'free';
+  const theme = getTheme(accountType);
 
   useEffect(() => {
     fetchConnections();
@@ -59,6 +70,13 @@ const ConnectionsPage: React.FC = () => {
     }
   };
 
+  const getButtonStyles = (accountType?: string) => {
+    const acct = accountType || (useAuthStore.getState().profile as any)?.account_type || (useAuthStore.getState().profile as any)?.subscription;
+    if (acct === 'vip') return 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-lg shadow-amber-400/20 hover:from-amber-600 hover:to-orange-600';
+    if (acct === 'pro') return 'bg-gradient-to-r from-sky-500 to-cyan-500 text-black shadow-lg shadow-sky-400/20 hover:from-sky-600 hover:to-cyan-600';
+    return 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-400/20 hover:from-pink-600 hover:to-rose-600';
+  };
+
   const handleConnect = (connection: Connection) => {
     // Format WhatsApp message
     const message = connection.whatsapp_message || 
@@ -71,12 +89,18 @@ const ConnectionsPage: React.FC = () => {
     window.open(whatsappUrl, '_blank');
   };
 
-  const acct = (useAuthStore.getState().profile as any)?.accountType || (useAuthStore.getState().profile as any)?.subscription;
+  const handleImageClick = (photos: string[], startIndex: number) => {
+    setViewerPhotos(photos);
+    setViewerStartIndex(startIndex);
+    setIsViewerOpen(true);
+  };
+
+  const acct = (useAuthStore.getState().profile as any)?.account_type || (useAuthStore.getState().profile as any)?.subscription;
   const isVip = acct === 'vip';
   const isPro = acct === 'pro';
   if (loading) {
     return (
-      <div className={`fixed inset-0 overflow-hidden text-white ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'} flex flex-col items-center justify-center`}>
+      <div className={`fixed inset-0 overflow-hidden text-white ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'} flex flex-col items-center justify-center min-h-[100dvh]`}>
         {isVip ? (
           <>
             <Ghost className="w-14 h-14 text-amber-300 animate-spin mb-4 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]" />
@@ -89,7 +113,7 @@ const ConnectionsPage: React.FC = () => {
           </>
         ) : (
           <>
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mb-4"></div>
+            <Ghost className="w-14 h-14 text-pink-500 animate-spin mb-4 drop-shadow-[0_0_12px_rgba(236,72,153,0.9)]" />
             <p className="text-white/70 text-sm">{t('loadingConnections')}</p>
           </>
         )}
@@ -99,8 +123,10 @@ const ConnectionsPage: React.FC = () => {
 
   if (connections.length === 0) {
     return (
-      <div className={`p-4 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'} min-h-screen text-white`}>
-        <h1 className="text-3xl font-bold mb-6 text-center">{t('connections')}</h1>
+      <div className="p-4 text-white">
+        <div className={cn("sticky top-0 z-20 py-4", theme.stickyHeader)}>
+          <h1 className="text-3xl font-bold text-center">{t('connections')}</h1>
+        </div>
         <div className="text-center text-gray-400 mt-8">
           <p>{t('noConnections')}</p>
           <p className="text-sm mt-2">{t('checkBackLater')}</p>
@@ -110,66 +136,30 @@ const ConnectionsPage: React.FC = () => {
   }
 
   return (
-    <div className={`p-4 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'} min-h-screen text-white`}>
-      <h1 className="text-3xl font-bold mb-6 text-center">{t('connections')}</h1>
+    <div className="p-4 text-white">
+      <div className={cn("sticky top-0 z-20 py-4", theme.stickyHeader)}>
+        <h1 className="text-3xl font-bold text-center">{t('connections')}</h1>
+      </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {connections.map((connection) => (
-          <div key={connection.id} className="bg-white/10 backdrop-blur-lg rounded-2xl p-4">
-            {/* Profile Photos Gallery */}
-            <div className="mb-4">
-              {connection.photos && connection.photos.length > 0 ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {connection.photos.slice(0, 4).map((photo, index) => (
-                    <div key={index} className={`aspect-square rounded-lg overflow-hidden ${
-                      connection.photos.length === 1 ? 'col-span-2' : 
-                      connection.photos.length === 3 && index === 0 ? 'col-span-2' : ''
-                    }`}>
-                      <img 
-                        src={photo} 
-                        alt={`${connection.name} - Photo ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ))}
-                  {connection.photos.length > 4 && (
-                    <div className="aspect-square rounded-lg overflow-hidden bg-black/50 flex items-center justify-center">
-                      <span className="text-white text-sm">+{connection.photos.length - 4}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="aspect-square rounded-xl overflow-hidden mb-4 bg-gradient-to-br from-pink-500/20 to-purple-500/20 flex items-center justify-center">
-                  <span className="text-white text-4xl font-bold">{connection.name.charAt(0)}</span>
-                </div>
-              )}
-            </div>
-            
-            {/* Name and Age */}
-            <h3 className="text-xl font-semibold mb-2">{connection.name}, {connection.age}</h3>
-            
-            {/* Location */}
-            <div className="flex items-center gap-1 text-white/70 mb-3">
-              <MapPin className="w-4 h-4" />
-              <span className="text-sm">{connection.location.name}</span>
-            </div>
-            
-            {/* Bio */}
-            <p className="text-white/80 text-sm mb-4 line-clamp-3">{connection.bio}</p>
-            
-            {/* Connect Button */}
-            <button
-              onClick={() => handleConnect(connection)}
-              className={`w-full py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 ${
-                isVip ? 'bg-amber-400 text-black hover:bg-amber-500' : ((useAuthStore.getState().profile as any)?.accountType === 'pro' ? 'bg-sky-500 text-black hover:bg-sky-400' : 'bg-pink-500 hover:bg-pink-600 text-white')
-              }`}
-            >
-              <Phone className="w-5 h-5" />
-              {t('connect')}
-            </button>
-          </div>
+          <ConnectionCard 
+            key={connection.id} 
+            connection={connection} 
+            onImageClick={handleImageClick} 
+            onConnect={() => handleConnect(connection)}
+          />
         ))}
       </div>
+
+      {isViewerOpen && (
+        <PhotoViewerModal
+          photos={viewerPhotos}
+          startIndex={viewerStartIndex}
+          onClose={() => setIsViewerOpen(false)}
+          isReadOnly={true}
+        />
+      )}
     </div>
   );
 };

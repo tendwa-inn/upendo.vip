@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 import { Match, Message } from '../types';
 import { useAuthStore } from './authStore';
+import { recordUnmatch, recordMessageSent } from '../services/popularityService';
 import { encryptMessage } from '../lib/crypto';
 import { normalizeMessage } from '../lib/messageUtils';
 import toast from 'react-hot-toast';
@@ -20,6 +21,7 @@ interface MatchState {
   createMatch: (matchedUserId: string) => Promise<void>;
   setTyping: (matchId: string, userId: string, isTyping: boolean) => void;
   markMatchesAsViewed: () => void;
+  listenForStrikes: () => () => void;
 }
 
 export const useMatchStore = create<MatchState>((set, get) => ({
@@ -28,6 +30,8 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   selectedMatch: null,
   typingUsers: {},
   hasNewMatches: false,
+
+  clearMatches: () => set({ matches: [], newMatches: [], selectedMatch: null, typingUsers: {}, hasNewMatches: false }),
 
   fetchMatches: async () => {
     const currentUser = useAuthStore.getState().user;
@@ -77,6 +81,8 @@ export const useMatchStore = create<MatchState>((set, get) => ({
 
     // The realtime listener will handle adding the message to the state, but we can also add it here for immediate feedback
     const cleanMessage = normalizeMessage(data);
+    // Also record that the user sent a message for popularity score
+    recordMessageSent(message.senderId);
     set((state) => {
       const matchIndex = state.matches.findIndex((m) => m.id === matchId);
       if (matchIndex === -1) return state;
@@ -156,7 +162,17 @@ export const useMatchStore = create<MatchState>((set, get) => ({
     }
   },
 
-  unmatch: async (matchId) => {
+  unmatch: async (matchId: string) => {
+    const { matches } = get();
+    const match = matches.find(m => m.id === matchId);
+    const currentUser = useAuthStore.getState().user;
+
+    if (match && currentUser) {
+      const otherUserId = match.user1.id === currentUser.id ? match.user2.id : match.user1.id;
+      // Record the unmatch for popularity score, but don't block the UI
+      recordUnmatch(currentUser.id, otherUserId).catch(console.error);
+    }
+
     const { error } = await supabase.from('matches').delete().eq('id', matchId);
     if (error) {
       console.error('Error unmatching:', error);
@@ -282,10 +298,20 @@ export const useMatchStore = create<MatchState>((set, get) => ({
 
     if (existingMatches && existingMatches.length > 0) {
       console.log("Match already exists:", existingMatches[0].id);
-      // A match already exists, so we don't create a new one.
-      // We can optionally fetch and select it.
-      get().fetchMatches(); // Refresh state to ensure it's up to date
-      return; // Stop execution
+      const { data: fullMatch, error: fetchError } = await supabase
+        .from('matches')
+        .select('*, user1:profiles!user1_id(*), user2:profiles!user2_id(*), messages(*)')
+        .eq('id', existingMatches[0].id)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching existing match:', fetchError);
+        return null;
+      }
+      
+      get().fetchMatches();
+      
+      return fullMatch;
     }
 
     if (existingMatchError) {
@@ -342,5 +368,23 @@ export const useMatchStore = create<MatchState>((set, get) => ({
         }
       };
     });
+  },
+
+  listenForStrikes: () => {
+    const channel = supabase
+      .channel('match-strikes-listener')
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'matches' },
+        (payload) => {
+          console.log('Match deleted (likely due to strike), refreshing matches...', payload);
+          get().fetchMatches();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   },
 }));

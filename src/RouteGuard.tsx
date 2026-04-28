@@ -7,100 +7,79 @@ import { useUiStore } from './stores/uiStore';
 import { wordFilterService } from './services/wordFilterService';
 
 const RouteGuard = ({ children }) => {
-  const { session, profile, isAdmin, loading } = useAuthStore();
-  const { onboardingCompleted: isFlowCompleted } = useOnboardingStore();
+  const { session, profile, isAdmin, loading, isSuspended } = useAuthStore();
+  const { onboardingCompleted: isFlowCompleted, completeOnboarding, reset: resetOnboarding } = useOnboardingStore();
   const navigate = useNavigate();
   const location = useLocation();
   const { openProfileSetupModal } = useUiStore();
 
   useEffect(() => {
+    if (!loading && profile?.onboarding_completed && !isFlowCompleted) {
+      completeOnboarding();
+    }
+
     if (loading) return; // Wait until authentication check is complete
 
-    const checkSuspension = async () => {
-      if (session && profile && !isAdmin) {
-        const suspension = await wordFilterService.getCurrentUserSuspension(profile.id);
-        if (suspension) {
-          if (location.pathname !== '/appeal') {
-            navigate(`/appeal?actionId=${suspension.id}`, { replace: true });
-          }
-          return true;
-        }
-        if ((profile as any).is_blocked) {
-          if (location.pathname !== '/blocked') {
-            navigate('/blocked', { replace: true });
-          }
-          return true;
-        }
-      }
-      return false;
-    };
-
     const handleRouting = async () => {
-      const isSuspended = await checkSuspension();
-      if (isSuspended) return;
-
-      const isAuthPage = ['/login', '/signup', '/callback', '/appeal'].includes(location.pathname);
-      const isAdminRoute = location.pathname.startsWith('/admin');
-      const isAllowedAdminUserRoute = location.pathname === '/profile';
-
-      if (!session) {
-        // No session, user is not logged in.
-        if (!isAuthPage) {
-          navigate('/login', { replace: true });
-        }
+      if (isSuspended) {
+        if (location.pathname !== '/appeal') navigate('/appeal', { replace: true });
         return;
       }
 
-      // From here, we know session exists.
+      const isAuthPage = ['/login', '/signup', '/callback', '/appeal', '/privacy'].includes(location.pathname);
+
+      if (!session) {
+        if (!isAuthPage) navigate('/login', { replace: true });
+        return;
+      }
+
+      // From here, we know a session exists.
 
       if (!profile) {
-        // Session exists, but profile is not loaded yet (or doesn't exist).
+        // If profile is not yet loaded, or doesn't exist in DB, the only safe place is onboarding.
+        // This handles new users and corrupted accounts that need to re-onboard.
+        // Reset onboarding store for new users to ensure they start from the beginning
+        resetOnboarding();
         if (location.pathname !== '/create-profile') {
           navigate('/create-profile', { replace: true });
         }
         return;
       }
 
-      // From here, we know session AND profile exist.
+      // From here, we know the profile object exists.
 
       if (isAdmin) {
-        if (isAuthPage || (!isAdminRoute && !isAllowedAdminUserRoute)) {
+        if (!location.pathname.startsWith('/admin')) {
           navigate('/admin/dashboard', { replace: true });
         }
         return;
       }
 
-      if (!(profile as any).onboarding_completed && !isFlowCompleted) {
-        // User is in the middle of onboarding.
+      if (!profile.onboarding_completed) {
         if (location.pathname !== '/create-profile') {
           navigate('/create-profile', { replace: true });
         }
         return;
       }
 
-      // From here, we know onboarding IS completed.
-
-      const isProfileIncomplete = !profile.bio || !profile.hereFor || !profile.photos || profile.photos.length < 1;
-
-      if (isProfileIncomplete) {
-        // Onboarding is done, but profile needs more info.
-        if (location.pathname !== '/profile') {
-          openProfileSetupModal();
-          navigate('/profile', { replace: true });
-        }
+      // Ensure profile is complete before entering the app
+      const isProfileIncomplete = !profile.bio || !profile.hereFor || !profile.photos || profile.photos.length < 3;
+      if (isProfileIncomplete && !['/profile', '/create-profile'].includes(location.pathname)) {
+        navigate('/profile', { replace: true });
         return;
       }
 
-      // From here, we know profile is fully complete.
+      // From here, we know onboarding is complete according to the database.
+      // This is the single source of truth.
 
-      if (isAuthPage) {
-        // User is fully set up but on an auth page, redirect them into the app.
+      // If the user is fully onboarded, but on an auth/onboarding page, send them into the app.
+      if (isAuthPage || location.pathname === '/create-profile') {
         navigate('/find', { replace: true });
       }
     };
 
     handleRouting();
-  }, [session, profile, isAdmin, loading, isFlowCompleted, navigate, location.pathname, openProfileSetupModal]);
+  }, [session, profile, isAdmin, loading, isFlowCompleted, navigate, location.pathname, openProfileSetupModal, resetOnboarding]);
 
   if (loading) {
     return <SplashScreen onComplete={() => {}} />;
