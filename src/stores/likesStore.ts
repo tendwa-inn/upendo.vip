@@ -13,12 +13,18 @@ interface LikesState {
   removeLike: (likerId: string) => Promise<void>;
   markLikesAsViewed: () => void;
   listenForNewLikes: () => () => void;
+  reset: () => void;
 }
 
-export const useLikesStore = create<LikesState>((set, get) => ({
+const initialState = {
   likedUserIds: new Set(),
   usersWhoLikedMe: [],
   hasNewLikes: false,
+};
+
+export const useLikesStore = create<LikesState>((set, get) => ({
+  ...initialState,
+  reset: () => set(initialState),
 
   fetchLikedUserIds: async () => {
     const user = useAuthStore.getState().user;
@@ -27,7 +33,8 @@ export const useLikesStore = create<LikesState>((set, get) => ({
     const { data, error } = await supabase
       .from('likes')
       .select('liked_id')
-      .eq('liker_id', user.id);
+      .eq('liker_id', user.id)
+      .abortSignal(new AbortController().signal);
 
     if (error) {
       console.error('Error fetching liked user IDs:', error);
@@ -50,7 +57,8 @@ export const useLikesStore = create<LikesState>((set, get) => ({
     const { data: likes, error: likesError } = await supabase
       .from('likes')
       .select('liker_id, created_at')
-      .eq('liked_id', currentUser.id);
+      .eq('liked_id', currentUser.id)
+      .abortSignal(new AbortController().signal);
 
     if (likesError) {
       console.error('Error fetching likes:', likesError);
@@ -68,7 +76,8 @@ export const useLikesStore = create<LikesState>((set, get) => ({
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
       .select('*')
-      .in('id', likerIds);
+      .in('id', likerIds)
+      .abortSignal(new AbortController().signal);
 
     if (profilesError) {
       console.error('Error fetching liker profiles:', profilesError);
@@ -107,33 +116,32 @@ export const useLikesStore = create<LikesState>((set, get) => ({
   markLikesAsViewed: () => set({ hasNewLikes: false }),
 
   listenForNewLikes: () => {
-    const channel = supabase
-      .channel('new-likes-listener')
+    const user = useAuthStore.getState().user;
+    if (!user) return () => {};
+
+    const channel = supabase.channel('new-likes-listener');
+
+    channel
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `type=eq.new_like` },
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
         (payload) => {
-          console.log('New like notification received!', payload);
-          // Refetch users who liked me to update the list
-          get().fetchUsersWhoLikedMe();
-          set({ hasNewLikes: true });
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `type=eq.system` },
-        (payload) => {
-          console.log('System notification received!', payload);
-          // Check if this is a strike notification by looking for keywords in the message
-          const message = payload.new.message as string;
-          if (message && (message.includes('strike') || message.includes('flagged'))) {
+          if ((payload.new as any).type === 'new_like') {
+            console.log('New like notification received!', payload);
+            get().fetchUsersWhoLikedMe();
+            set({ hasNewLikes: true });
+          }
+          if ((payload.new as any).type === 'system' && (payload.new as any).message?.includes('strike')) {
             console.log('Strike notification detected, refreshing like lists...');
-            // Refetch users who liked me to remove users who were unmatched due to strikes
             get().fetchUsersWhoLikedMe();
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Subscribed to new likes listener!');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);

@@ -28,7 +28,7 @@ const CreateProfilePage: React.FC = () => {
 
   useEffect(() => {
     if (profile && profile.onboarding_completed) {
-      navigate('/find', { replace: true });
+      navigate('/discover', { replace: true });
     }
   }, [profile, navigate]);
 

@@ -3,7 +3,8 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 
 const ProtectedRoute = () => {
-  const { session } = useAuthStore.getState();
+  // Use the store's state, not a one-time snapshot
+  const session = useAuthStore((state) => state.session);
 
   if (!session) {
     return <Navigate to="/login" replace />;

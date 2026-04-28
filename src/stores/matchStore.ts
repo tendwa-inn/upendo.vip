@@ -38,12 +38,18 @@ interface MatchState {
   subscribeToProfileChanges: () => any; // Return type is Supabase channel
   unsubscribeFromProfileChanges: () => void;
   listenForStrikes: () => () => void;
+  reset: () => void;
 }
 
-export const useMatchStore = create<MatchState>((set, get) => ({
+const initialState = {
   matches: [],
   selectedMatch: null,
   typingUsers: {},
+};
+
+export const useMatchStore = create<MatchState>((set, get) => ({
+  ...initialState,
+  reset: () => set(initialState),
 
   subscribeToProfileChanges: () => {
     const channel = supabase

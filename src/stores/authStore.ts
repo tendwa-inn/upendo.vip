@@ -26,6 +26,8 @@ interface AuthState {
   messageRequestsSent: number;
   messageRequestResetDate: Date | null;
   channel: RealtimeChannel | null;
+  isInitialized: boolean;
+  profileLoading: boolean;
   setSession: (session: Session | null) => void;
   setProfile: (profile: User | null) => void;
   checkUser: () => Promise<void>;
@@ -37,9 +39,12 @@ interface AuthState {
   incrementMessageRequests: () => void;
   signUpWithEmail: (email, password) => Promise<any>;
   applyPromoCode: (promoCode: string) => Promise<void>;
+  reset: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+let isChecking = false;
+
+const initialState = {
   session: null,
   user: null,
   profile: null,
@@ -51,50 +56,94 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   messageRequestsSent: 0,
   messageRequestResetDate: null,
   channel: null,
+  isInitialized: false,
+  profileLoading: true,
+};
+
+export const useAuthStore = create<AuthState>((set, get) => ({
+  ...initialState,
   setSession: (session) => set({ session, user: session?.user ?? null }),
   setProfile: (profile) => set({ profile }),
+  reset: () => set(initialState),
 
   checkUser: async () => {
-    const { data: { session: freshSession }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError) {
-      console.error('Error getting session:', sessionError);
-      set({ session: null, user: null, profile: null, isAdmin: false, loading: false });
-      return;
-    }
-    
-    set({ session: freshSession, user: freshSession?.user ?? null });
-    
+    if (isChecking) return;
+    isChecking = true;
+
     try {
+      const { data: { session: freshSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Error getting session:', sessionError);
+        set({ 
+          session: null, 
+          user: null, 
+          profile: null, 
+          isAdmin: false, 
+          loading: false, 
+          isInitialized: true,
+          profileLoading: false 
+        });
+        return;
+      }
+      
+      // Set session and mark auth as initialized, but keep profile loading
+      set({ 
+        session: freshSession, 
+        user: freshSession?.user ?? null, 
+        isInitialized: true,
+        loading: true,
+        profileLoading: true 
+      });
+      
       if (freshSession?.user) {
         // Also record user activity for popularity score
         recordUserActivity(freshSession.user.id);
-        const { data: profiles, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', freshSession.user.id);
+        
+        // Add timeout for profile loading to prevent infinite waiting
+        const profileTimeout = setTimeout(() => {
+          console.warn('Profile loading timeout - proceeding without profile');
+          set({ profileLoading: false });
+        }, 10000); // 10 second timeout
+        
+        try {
+          const { data: profiles, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', freshSession.user.id)
+            .abortSignal(new AbortController().signal); // Add abort signal for better cancellation
 
-        if (profileError) {
-          console.error("Error fetching profile:", profileError);
-          set({ profile: null });
-          return;
-        }
+          clearTimeout(profileTimeout);
 
-        const profile = profiles && profiles.length > 0 ? profiles[0] : null;
-        console.log('[DEBUG] Raw profile keys from authStore:', profile ? Object.keys(profile) : 'No profile found');
+          if (profileError) {
+            console.error("Error fetching profile:", profileError);
+            set({ profile: null, loading: false, profileLoading: false });
+            return;
+          }
 
-        if (!profile) {
-          set({ profile: null });
-          return; 
-        }
+        try {
+          const profile = profiles && profiles.length > 0 ? profiles[0] : null;
+          console.log('[DEBUG] Raw profile keys from authStore:', profile ? Object.keys(profile) : 'No profile found');
 
-        const processedProfile: User = { 
-          ...profile,
-          lastActive: profile.last_active_at || profile.lastActive,
-          account_type: profile.account_type || profile.subscription,
-        } as User;
+          if (!profile) {
+            set({ profile: null, loading: false, profileLoading: false });
+            return; 
+          }
 
-        if (profile.strikes >= 3) {
+          const processedProfile: User = { 
+            ...profile,
+            lastActive: profile.last_active_at || profile.lastActive || new Date(),
+            account_type: profile.account_type || profile.subscription || 'free',
+            // Ensure required properties exist with safe defaults
+            bio: profile.bio || '',
+            hereFor: profile.here_for || profile.hereFor || [],
+            photos: profile.photos || [],
+            onboarding_completed: profile.onboarding_completed || (profile as any).onboarded || false,
+            // Handle strikes safely
+            strikes: profile.strikes || 0,
+          } as User;
+
+        if ((profile.strikes || 0) >= 3) {
           toast.error('Your account has been banned.');
           get().signOut();
           return;
@@ -144,29 +193,44 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isPro,
           isVip,
           messageRequestsSent: (processedProfile as any).message_requests_sent || 0,
-          messageRequestResetDate: (processedProfile as any).message_request_reset_date ? new Date((processedProfile as any).message_request_reset_date) : null
+          messageRequestResetDate: (processedProfile as any).message_request_reset_date ? new Date((processedProfile as any).message_request_reset_date) : null,
+          loading: false,
+          profileLoading: false
         });
-
-        get().fetchInitialData();
 
         // Set up a real-time listener for the user's profile, if one doesn't exist
         if (!get().channel) {
+          get().fetchInitialData();
           const channel = supabase.channel(`profile:${processedProfile.id}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${processedProfile.id}` }, payload => {
-              console.log('Profile change detected, refetching profile...', payload);
-              get().checkUser();
+              console.log('Profile updated via subscription:', payload);
+              set((state) => ({
+                profile: {
+                  ...state.profile,
+                  ...payload.new,
+                } as User,
+              }));
             })
             .subscribe();
           set({ channel });
         }
+        } catch (profileError) {
+          console.error("Error processing profile:", profileError);
+          set({ profile: null, loading: false, profileLoading: false });
+        }
+        } catch (error) {
+          console.error("Error in profile fetch block:", error);
+          set({ profile: null, loading: false, profileLoading: false });
+        }
 
       } else {
-        set({ profile: null, isAdmin: false });
+        set({ profile: null, isAdmin: false, loading: false, profileLoading: false });
       }
     } catch (error) {
       console.error("Error checking user:", error);
+      set({ loading: false, profileLoading: false });
     } finally {
-      set({ loading: false });
+      isChecking = false;
     }
   },
 
@@ -206,13 +270,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     const { channel } = get();
     if (channel) {
-      await channel.unsubscribe();
+      try {
+        await channel.unsubscribe();
+      } catch (e) {
+        console.warn('Error unsubscribing from channel', e);
+      }
     }
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast.error("Logout failed. Please try again.");
-    } else {
-      set({ session: null, user: null, profile: null, isAdmin: false, channel: null });
+    
+    // Clear local session immediately to prevent UI issues
+    try {
+      // Clear local storage first
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('upendo-auth-token');
+      }
+      
+      // Attempt signout - network errors are handled by the supabase client wrapper
+      const { error } = await supabase.auth.signOut();
+      
+      if (error && !error.message?.includes('aborted') && !error.message?.includes('network')) {
+        // Only show toast for non-network errors
+        toast.error("Logout failed. Please try again.");
+      }
+      
+    } catch (error: any) {
+      console.warn('SignOut cleanup error:', error);
     }
   },
 

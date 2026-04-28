@@ -4,8 +4,16 @@ import { Toaster, toast } from 'react-hot-toast';
 import { useAuthStore } from './stores/authStore';
 import { wordFilterService } from './services/wordFilterService';
 import { useAppSettingsStore } from './stores/appSettingsStore';
-import { useMatchStore } from './stores/matchStore.tsx';
+import { useMatchStore } from './stores/matchStore';
 import { useNotificationStore } from './stores/notificationStore';
+import { useUiStore } from './stores/uiStore';
+import { useLikesStore } from './stores/likesStore';
+import { useDiscoveryStore } from './stores/discoveryStore';
+import { useViewsStore } from './stores/viewsStore';
+import { useSwipeStore } from './stores/swipeStore';
+import { useOnboardingStore } from './stores/onboardingStore';
+import { useThemeStore } from './stores/themeStore';
+import { useModalStore } from './stores/modalStore';
 
 import { supabase } from './lib/supabaseClient';
 import { useNetworkStore } from './stores/networkStore';
@@ -53,8 +61,6 @@ import usePresenceStore from './stores/presenceStore';
 import i18n from 'i18next';
 import './lib/i18n';
 
-import { resetAllStores } from './stores/reset';
-
 import { useLikeStore } from './stores/likeStore';
 
 function App() {
@@ -62,20 +68,74 @@ function App() {
   const { getSettings } = useAppSettingsStore();
 
   useEffect(() => {
-    const initializeApp = async () => {
-      await checkUser();
-      // Only load filtered words after auth is complete to avoid race conditions
-      wordFilterService.loadFilteredWords();
+    // Global error handler for external script errors
+    const handleWindowError = (event: ErrorEvent) => {
+      const errorMessage = event.message || '';
+      const errorSource = event.filename || '';
+      
+      // Filter out browser extension and external script errors
+      const externalErrorPatterns = [
+        'addListener',
+        'chrome',
+        'extension',
+        'browser.runtime',
+        'content-script',
+        'web-accessible',
+        's.bm' // Minified pattern from your error
+      ];
+      
+      const isExternalError = externalErrorPatterns.some(pattern => 
+        errorMessage.includes(pattern) || errorSource.includes(pattern)
+      );
+      
+      if (isExternalError) {
+        console.warn('External script error suppressed:', errorMessage, 'from:', errorSource);
+        event.preventDefault(); // Prevent error from bubbling
+        return false;
+      }
+      
+      // Let other errors propagate normally
+      return true;
     };
     
-    initializeApp();
+    window.addEventListener('error', handleWindowError);
     
+    return () => {
+      window.removeEventListener('error', handleWindowError);
+    };
+  }, []);
+
+  useEffect(() => {
+    checkUser();
+  }, [checkUser]);
+
+  useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
-        resetAllStores();
+        console.log("Resetting all Zustand stores on SIGNED_OUT event.");
+        // Reset all stores with error handling
+        try {
+          useAuthStore.getState().reset();
+          useNotificationStore.getState().reset();
+          useMatchStore.getState().reset();
+          useUiStore.getState().reset();
+          useAppSettingsStore.getState().reset();
+          useLikesStore.getState().reset();
+          useDiscoveryStore.getState().reset();
+          useViewsStore.getState().reset();
+          useSwipeStore.getState().reset();
+          useOnboardingStore.getState().reset();
+          useThemeStore.getState().reset();
+          useModalStore.getState().reset();
+          usePresenceStore.getState().reset();
+        } catch (error) {
+          console.warn('Error resetting stores during sign out:', error);
+        }
       } else if (session) {
         useAuthStore.getState().setSession(session);
       }
+      // Update isInitialized when auth state changes
+      useAuthStore.setState({ isInitialized: true, loading: false });
       checkUser();
     });
 

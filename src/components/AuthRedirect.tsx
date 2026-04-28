@@ -16,7 +16,7 @@ const AuthRedirect: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       if (!user?.profileExists && !isAuthPage) {
         navigate('/create-profile');
       } else if (isAuthPage) {
-        navigate('/find');
+        navigate('/discover');
       }
     } else if (!isAuthPage) {
       navigate('/login');

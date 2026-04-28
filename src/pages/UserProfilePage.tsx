@@ -310,7 +310,7 @@ const UserProfilePage: React.FC = () => {
       await blockService.blockUser(authUser.id, user.id);
       toast.success(t('toast.block.success'));
       setShowMenu(false);
-      navigate('/find');
+      navigate('/discover');
     } catch (error) {
       console.error('Error blocking user:', error);
       toast.error(t('toast.block.error'));
@@ -362,7 +362,7 @@ const UserProfilePage: React.FC = () => {
     <div className={`min-h-screen relative ${isVipProfile ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isProProfile ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
       {/* Back Arrow & Menu */}
       <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-center">
-        <Link to="/find" className={`p-2 rounded-full ${isDark ? 'bg-gray-800/50 text-white' : 'bg-black/20 text-white'} backdrop-blur-md`}>
+        <Link to="/discover" className={`p-2 rounded-full ${isDark ? 'bg-gray-800/50 text-white' : 'bg-black/20 text-white'} backdrop-blur-md`}>
           <ArrowLeft className="w-6 h-6" />
         </Link>
         

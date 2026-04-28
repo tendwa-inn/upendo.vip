@@ -5,6 +5,7 @@ interface AppSettingsState {
   settings: AppSettings[];
   getSettings: () => Promise<void>;
   getSettingForTier: (tier: string) => AppSettings | undefined;
+  reset: () => void;
 }
 
 export const useAppSettingsStore = create<AppSettingsState>((set) => ({
@@ -17,4 +18,5 @@ export const useAppSettingsStore = create<AppSettingsState>((set) => ({
     return useAppSettingsStore.getState().settings.find(s => s.account_type === tier);
   },
   setSettings: (data: AppSettings[]) => set({ settings: data }),
+  reset: () => set({ settings: [] }),
 }));

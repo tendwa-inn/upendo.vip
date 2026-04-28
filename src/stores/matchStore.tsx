@@ -22,16 +22,21 @@ interface MatchState {
   setTyping: (matchId: string, userId: string, isTyping: boolean) => void;
   markMatchesAsViewed: () => void;
   listenForStrikes: () => () => void;
+  reset: () => void;
 }
 
-export const useMatchStore = create<MatchState>((set, get) => ({
+const initialState = {
   matches: [],
   newMatches: [],
   selectedMatch: null,
   typingUsers: {},
   hasNewMatches: false,
+};
 
-  clearMatches: () => set({ matches: [], newMatches: [], selectedMatch: null, typingUsers: {}, hasNewMatches: false }),
+export const useMatchStore = create<MatchState>((set, get) => ({
+  ...initialState,
+  clearMatches: () => set(initialState),
+  reset: () => set(initialState),
 
   fetchMatches: async () => {
     const currentUser = useAuthStore.getState().user;

@@ -21,7 +21,7 @@ const NotificationsPage: React.FC = () => {
     <div className={`text-white min-h-screen flex flex-col ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-stone-900'}`}>
       {/* Header */}
       <div className={`p-4 pt-safe-top border-b border-white/10 flex items-center justify-between flex-shrink-0 ${isVip ? 'bg-black' : isPro ? 'bg-[#071521]' : ''}`}>
-        <Link to="/find" className="p-2">
+        <Link to="/discover" className="p-2">
           <ArrowLeft className="w-6 h-6" />
         </Link>
         <h1 className="text-2xl font-bold">{t('notifications')}</h1>
