@@ -24,6 +24,8 @@ import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
 import CreateProfilePage from './pages/CreateProfilePage';
 import CallbackPage from './pages/CallbackPage';
+import HomePage from './pages/HomePage';
+import TermsOfServicePage from './pages/TermsOfServicePage';
 // Admin Imports
 import AdminLayout from './admin/AdminLayout';
 import AdminDashboard from './admin/AdminDashboard';
@@ -192,9 +194,9 @@ const AppRoutes = () => {
 
   return (
     <Routes>
-      {/* Unprotected Routes */}
+      {/* Public Routes */}
+      <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
-
       <Route path="/signup" element={<SignUpPage />} />
       <Route path="/callback" element={<CallbackPage />} />
       <Route path="/admin-login" element={<AdminLoginPage />} />
@@ -202,6 +204,7 @@ const AppRoutes = () => {
       <Route path="/blocked" element={<BlockedPage />} />
       <Route path="/community-guidelines" element={<CommunityGuidelines />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms" element={<TermsOfServicePage />} />
 
       {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>
@@ -243,7 +246,7 @@ const AppRoutes = () => {
       </Route>
 
       {/* Fallback Route */}
-      <Route path="/*" element={<Navigate to="/login" replace />} />
+      <Route path="/*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };

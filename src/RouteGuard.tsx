@@ -26,7 +26,7 @@ const RouteGuard = ({ children }) => {
         return;
       }
 
-      const isAuthPage = ['/login', '/signup', '/callback', '/appeal', '/privacy'].includes(location.pathname);
+      const isAuthPage = ['/', '/login', '/signup', '/callback', '/appeal', '/privacy', '/terms'].includes(location.pathname);
 
       if (!session) {
         if (!isAuthPage) navigate('/login', { replace: true });
@@ -72,8 +72,8 @@ const RouteGuard = ({ children }) => {
       // From here, we know onboarding is complete according to the database.
       // This is the single source of truth.
 
-      // If the user is fully onboarded, but on an auth/onboarding page, send them into the app.
-      if (isAuthPage || location.pathname === '/create-profile') {
+      // If the user is fully onboarded, but on an auth/onboarding page (except homepage), send them into the app.
+      if ((isAuthPage && location.pathname !== '/') || location.pathname === '/create-profile') {
         navigate('/find', { replace: true });
       }
     };
