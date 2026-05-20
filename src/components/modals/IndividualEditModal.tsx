@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { X, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../stores/authStore';
+import { useCurrentTheme } from '../../stores/colorThemeStore';
 import { 
   occupations, 
   heights, 
@@ -19,8 +20,8 @@ import {
 const IndividualEditModal = ({ field, value, onSave, onClose }) => {
   const { t } = useTranslation();
   const { profile } = useAuthStore();
-  const isVip = profile?.account_type === 'vip';
-  const isPro = profile?.account_type === 'pro';
+  const acct = profile?.account_type || profile?.subscription || 'free';
+  const theme = useCurrentTheme(acct);
   const [currentValue, setCurrentValue] = useState(field === 'hereFor' ? (Array.isArray(value) ? value : []) : (value || ''));
   const [hasChanged, setHasChanged] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,7 +53,7 @@ const IndividualEditModal = ({ field, value, onSave, onClose }) => {
     switch (field) {
       case 'occupation':
         return (
-          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`}>
+          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`}>
             <option className="text-black" value="">{t('general.notSpecified')}</option>
             {occupations.map(occ => (
               <option className="text-black" key={occ} value={occ}>{occ}</option>
@@ -61,21 +62,21 @@ const IndividualEditModal = ({ field, value, onSave, onClose }) => {
         );
       case 'height':
         return (
-                    <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`}>
+                    <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`}>
             <option className="text-black" value="">{t('general.notSpecified')}</option>
             {heights.map(h => <option className="text-black" key={h} value={h}>{h}</option>)}
           </select>
         );
       case 'religion':
         return (
-          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`}>
+          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`}>
             <option className="text-black" value="">{t('general.notSpecified')}</option>
             {religions.map(r => <option className="text-black" key={r} value={r}>{r}</option>)}
           </select>
         );
       case 'loveLanguage':
         return (
-          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`}>
+          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`}>
             <option className="text-black" value="">{t('general.notSpecified')}</option>
             {loveLanguages.map(ll => <option className="text-black" key={ll} value={ll}>{ll}</option>)}
           </select>
@@ -83,35 +84,35 @@ const IndividualEditModal = ({ field, value, onSave, onClose }) => {
       case 'drinking':
       case 'smoking':
         return (
-          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`}>
+          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`}>
             <option className="text-black" value="">{t('general.notSpecified')}</option>
             {drinkingAndSmokingOptions.map(opt => <option className="text-black" key={opt} value={opt}>{opt}</option>)}
           </select>
         );
       case 'firstDate':
         return (
-          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`}>
+          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`}>
             <option className="text-black" value="">{t('general.notSpecified')}</option>
             {firstDateIdeas.map(idea => <option className="text-black" key={idea} value={idea}>{idea}</option>)}
           </select>
         );
       case 'education':
         return (
-          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`}>
+          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`}>
             <option className="text-black" value="">{t('general.notSpecified')}</option>
             {educationOptions.map(edu => <option className="text-black" key={edu} value={edu}>{edu}</option>)}
           </select>
         );
       case 'relationshipIntent':
         return (
-          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`}>
+          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`}>
             <option className="text-black" value="">{t('general.notSpecified')}</option>
             {relationshipIntentOptions.map(intent => <option className="text-black" key={intent} value={intent}>{intent}</option>)}
           </select>
         );
       case 'kids':
         return (
-          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`}>
+          <select value={currentValue} onChange={e => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`}>
             <option className="text-black" value="">{t('general.notSpecified')}</option>
             {kidsOptions.map(option => <option className="text-black" key={option} value={option}>{option}</option>)}
           </select>
@@ -129,7 +130,7 @@ const IndividualEditModal = ({ field, value, onSave, onClose }) => {
                 onClick={() => handleHereForChange(option)}
                 className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
                   currentValue.includes(option)
-                    ? (isVip ? 'bg-amber-400 text-black' : isPro ? 'bg-cyan-400 text-white' : 'bg-pink-600 text-white')
+                    ? `${theme.button.primary} text-white`
                     : 'bg-white/10 text-gray-300 hover:bg-white/20'
                 }`}
               >
@@ -145,7 +146,7 @@ const IndividualEditModal = ({ field, value, onSave, onClose }) => {
               value={currentValue} 
               onChange={(e) => { setCurrentValue(e.target.value); setHasChanged(true); }} 
               maxLength="250"
-              className={`w-full h-32 p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`} 
+              className={`w-full h-32 p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`} 
             />
             <div className="text-right text-xs text-gray-400 mt-1">
               {currentValue?.length || 0} / 250
@@ -153,7 +154,7 @@ const IndividualEditModal = ({ field, value, onSave, onClose }) => {
           </div>
         );
       default:
-          return <input type="text" value={currentValue} onChange={(e) => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${isVip ? 'focus:ring-amber-400' : isPro ? 'focus:ring-cyan-400' : 'focus:ring-pink-400'}`} />;
+          return <input type="text" value={currentValue} onChange={(e) => { setCurrentValue(e.target.value); setHasChanged(true); }} className={`w-full p-3 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 text-white ${theme.accent.ring}`} />;
     }
   };
 
@@ -163,7 +164,7 @@ const IndividualEditModal = ({ field, value, onSave, onClose }) => {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 20, opacity: 0 }}
-        className={`bg-gradient-to-b ${isVip ? 'from-black to-[#0b0b0b]' : isPro ? 'from-[#071521] to-[#0b2237]' : 'from-[#2E0C13] to-[#22090E]'} rounded-2xl p-6 w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto text-white border ${isVip ? 'border-amber-400/30' : isPro ? 'border-cyan-400/30' : 'border-white/10'}`}
+        className={`${theme.background} rounded-2xl p-6 w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto text-white border ${theme.accent.border}`}
       >
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold">{fieldTitles[field] || t('profile.edit.editProfile')}</h2>
@@ -183,7 +184,7 @@ const IndividualEditModal = ({ field, value, onSave, onClose }) => {
           </button>
           <button 
             onClick={() => onSave(field, currentValue)} 
-            className={`px-5 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isVip ? 'bg-amber-400 hover:bg-amber-500 text-black' : isPro ? 'bg-cyan-400 hover:bg-cyan-500 text-white' : 'bg-pink-600 hover:bg-pink-700 text-white'}`}
+            className={`px-5 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${theme.button.primary} ${theme.button.primaryHover} text-white`}
             disabled={!hasChanged && currentValue === value}
           >
             {t('general.save')}

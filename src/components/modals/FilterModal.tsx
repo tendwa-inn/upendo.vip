@@ -3,6 +3,7 @@ import Portal from '../Portal';
 import { X, Lock } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useTranslation } from 'react-i18next';
+import { useCurrentTheme } from '../../stores/colorThemeStore';
 
 interface FilterModalProps {
   isOpen: boolean;
@@ -17,6 +18,8 @@ const africanTribes = [
 const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, onApply }) => {
   const { profile, isPro, isVip } = useAuthStore();
   const { t } = useTranslation();
+  const acct = profile?.account_type || profile?.subscription || 'free';
+  const theme = useCurrentTheme(acct);
   const [ageRange, setAgeRange] = useState([22, 37]);
   const [distance, setDistance] = useState(50);
   const [tribe, setTribe] = useState('');
@@ -33,13 +36,9 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, onApply }) =
   return (
     <Portal>
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-        <div className={`bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] rounded-2xl w-full max-w-md p-6 text-white border relative shadow-2xl ${
-          isVip ? 'border-amber-400/30' : (isPro ? 'border-sky-400/30' : 'border-pink-500/30')
-        }`}>
+        <div className={`${theme.background} rounded-2xl w-full max-w-md p-6 text-white border ${theme.accent.border} relative shadow-2xl`}>
           {/* Glow Effect */}
-          <div className={`absolute inset-0 rounded-2xl blur-xl ${
-            isVip ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : (isPro ? 'bg-gradient-to-r from-sky-400/10 to-blue-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10')
-          }`}></div>
+          <div className={`absolute inset-0 rounded-2xl blur-xl ${theme.accent.glow.replace('shadow-', 'bg-').replace('/20', '/10').replace('/30', '/10')}`}></div>
 
           <div className="flex justify-between items-center mb-6 relative z-10">
             <h2 className="text-2xl font-bold text-white">{t('filters.title')}</h2>
@@ -64,7 +63,7 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, onApply }) =
                 {!isVip && <Lock className="w-3 h-3 ml-2 text-yellow-400" />}
               </label>
               {isVip ? (
-                <select value={tribe} onChange={(e) => setTribe(e.target.value)} className="w-full p-3 bg-white/5 rounded-md border border-white/10 focus:ring-2 focus:ring-pink-500 outline-none transition-all duration-300">
+                <select value={tribe} onChange={(e) => setTribe(e.target.value)} className={`w-full p-3 bg-white/5 rounded-md border border-white/10 focus:ring-2 ${theme.accent.ring} outline-none transition-all duration-300`}>
                   <option value="">{t('filters.allTribes')}</option>
                   {africanTribes.map(t => <option key={t} value={t} className="bg-gray-800 text-white">{t}</option>)}
                 </select>
@@ -85,13 +84,7 @@ const FilterModal: React.FC<FilterModalProps> = ({ isOpen, onClose, onApply }) =
             </button>
             <button 
               onClick={handleApply}
-              className={`px-8 py-2 rounded-full font-bold transition-all duration-300 hover:scale-105 ${
-                isVip 
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/30 hover:bg-amber-500' 
-                  : isPro 
-                    ? 'bg-[#ff7f50] text-black shadow-lg shadow-orange-400/30 hover:bg-[#ff5e57]' 
-                    : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-lg shadow-pink-500/20 hover:from-pink-700 hover:to-pink-600'
-              }`}
+              className={`px-8 py-2 rounded-full font-bold transition-all duration-300 hover:scale-105 ${theme.button.primary} ${theme.button.primaryHover} text-white shadow-lg ${theme.accent.glow}`}
             >{t('filters.apply')}</button>
           </div>
         </div>

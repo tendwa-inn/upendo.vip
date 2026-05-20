@@ -2,9 +2,18 @@ import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
 import { X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useMatchAnimationStore } from '../../stores/matchAnimationStore';
+import { useCurrentTheme } from '../../stores/colorThemeStore';
+import { useTranslation } from 'react-i18next';
 
 const MatchAnimation = ({ matchedUser, onClose }) => {
   const { profile: currentUser } = useAuthStore();
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const { matchId } = useMatchAnimationStore();
+  const acct = (useAuthStore.getState().profile as any)?.account_type || (useAuthStore.getState().profile as any)?.subscription || 'free';
+  const theme = useCurrentTheme(acct);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -16,7 +25,6 @@ const MatchAnimation = ({ matchedUser, onClose }) => {
 
   if (!currentUser || !matchedUser) return null;
 
-  const isVip = ((useAuthStore.getState().profile as any)?.accountType === 'vip') || ((useAuthStore.getState().profile as any)?.subscription === 'vip');
   return (
     <AnimatePresence>
       <motion.div
@@ -31,12 +39,12 @@ const MatchAnimation = ({ matchedUser, onClose }) => {
           transition={{ type: 'spring', stiffness: 260, damping: 20 }}
           className="relative w-full max-w-md text-center"
         >
-          <h1 className={`text-5xl font-bold mb-8 ${isVip ? 'text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.8)]' : 'text-white'}`} style={{ fontFamily: 'Lobster, cursive' }}>It's a Match!</h1>
-          <p className="text-white/80 text-lg mb-12">You and {matchedUser.name} have liked each other.</p>
-          
+          <h1 className={`text-4xl font-bold mb-8 ${theme.primary}`} style={{ fontFamily: 'Lobster, cursive' }}>{t('modal.match.title')}</h1>
+          <p className="text-white/80 text-base mb-12">{t('modal.match.body', { name: matchedUser.name })}</p>
+
           <div className="relative flex justify-center items-center h-48">
             {/* Current User Photo */}
-            <motion.div 
+            <motion.div
               initial={{ x: -100, rotate: -15, scale: 0.8 }}
               animate={{ x: -40, rotate: -8, scale: 1 }}
               className="absolute w-40 h-40 rounded-full border-4 border-white shadow-lg overflow-hidden"
@@ -45,10 +53,10 @@ const MatchAnimation = ({ matchedUser, onClose }) => {
             </motion.div>
 
             {/* Matched User Photo */}
-            <motion.div 
+            <motion.div
               initial={{ x: 100, rotate: 15, scale: 0.8 }}
               animate={{ x: 40, rotate: 8, scale: 1 }}
-              className={`absolute w-40 h-40 rounded-full border-4 ${isVip ? 'border-amber-400' : 'border-pink-500'} shadow-lg overflow-hidden`}
+              className={`absolute w-40 h-40 rounded-full border-4 ${theme.accent.border.replace('border-', 'border-').replace('/30', '')} shadow-lg overflow-hidden`}
             >
               <img src={matchedUser.photos[0]} alt={matchedUser.name} className="w-full h-full object-cover" />
             </motion.div>
@@ -57,10 +65,15 @@ const MatchAnimation = ({ matchedUser, onClose }) => {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={onClose} // Allow manual closing
-            className={`mt-16 px-8 py-3 font-bold rounded-full shadow-lg transition-all duration-300 ${isVip ? 'bg-amber-400 text-black hover:bg-amber-500' : 'bg-pink-600 text-white hover:bg-pink-700'}`}
+            onClick={() => {
+              onClose();
+              if (matchId) {
+                navigate(`/chat/${matchId}`);
+              }
+            }}
+            className={`mt-16 px-8 py-3 font-bold rounded-full shadow-lg transition-all duration-300 ${theme.button.primary} ${theme.button.primaryHover} text-white`}
           >
-            Send a Message
+            {t('modal.match.sendMessage')}
           </motion.button>
 
           <button onClick={onClose} className="absolute top-0 right-0 text-white/50 hover:text-white transition-all">

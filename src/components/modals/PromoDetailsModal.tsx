@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Gift, Calendar, Tag } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface PromoDetailsModalProps {
   isOpen: boolean;
@@ -19,10 +20,11 @@ const PromoDetailsModal: React.FC<PromoDetailsModalProps> = ({
   promoDescription,
   expiresAt
 }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   const formatExpiryDate = (dateString: string) => {
-    if (!dateString) return 'No expiration';
+    if (!dateString) return t('modal.promoDetails.noExpiry');
     try {
       const date = new Date(dateString);
       return date.toLocaleDateString('en-US', {
@@ -33,7 +35,7 @@ const PromoDetailsModal: React.FC<PromoDetailsModalProps> = ({
         minute: '2-digit'
       });
     } catch {
-      return 'Invalid date';
+      return t('modal.promoDetails.invalidDate');
     }
   };
 
@@ -66,7 +68,7 @@ const PromoDetailsModal: React.FC<PromoDetailsModalProps> = ({
             <div className="w-16 h-16 mx-auto bg-gradient-to-r from-pink-500 to-purple-500 rounded-full flex items-center justify-center mb-4">
               <Gift className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-white">Promo Code Details</h2>
+            <h2 className="text-2xl font-bold text-white">{t('modal.promoDetails.title')}</h2>
           </div>
 
           {/* Promo Code */}
@@ -74,7 +76,7 @@ const PromoDetailsModal: React.FC<PromoDetailsModalProps> = ({
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-2">
                 <Tag className="w-5 h-5 text-pink-400" />
-                <span className="text-sm text-gray-300">Promo Code</span>
+                <span className="text-sm text-gray-300">{t('modal.promoDetails.promoCode')}</span>
               </div>
               <div className="bg-white/10 rounded-lg p-3 text-center">
                 <code className="text-lg font-mono text-pink-400">{promoCode}</code>
@@ -87,7 +89,7 @@ const PromoDetailsModal: React.FC<PromoDetailsModalProps> = ({
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-2">
                 <Gift className="w-5 h-5 text-purple-400" />
-                <span className="text-sm text-gray-300">Promotion Name</span>
+                <span className="text-sm text-gray-300">{t('modal.promoDetails.promoName')}</span>
               </div>
               <p className="text-white font-semibold">{promoName}</p>
             </div>
@@ -98,7 +100,7 @@ const PromoDetailsModal: React.FC<PromoDetailsModalProps> = ({
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-5 h-5 text-blue-400">ℹ️</div>
-                <span className="text-sm text-gray-300">Description</span>
+                <span className="text-sm text-gray-300">{t('modal.promoDetails.description')}</span>
               </div>
               <p className="text-gray-200 leading-relaxed">{promoDescription}</p>
             </div>
@@ -108,7 +110,7 @@ const PromoDetailsModal: React.FC<PromoDetailsModalProps> = ({
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-2">
               <Calendar className="w-5 h-5 text-yellow-400" />
-              <span className="text-sm text-gray-300">Valid Till</span>
+              <span className="text-sm text-gray-300">{t('modal.promoDetails.validTill')}</span>
             </div>
             <p className="text-yellow-300 font-semibold">
               {formatExpiryDate(expiresAt || '')}
@@ -120,7 +122,7 @@ const PromoDetailsModal: React.FC<PromoDetailsModalProps> = ({
             onClick={onClose}
             className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white font-semibold rounded-lg hover:from-pink-600 hover:to-purple-600 transition-all duration-200"
           >
-            Got it!
+            {t('modal.promoDetails.gotIt')}
           </button>
         </motion.div>
       </motion.div>

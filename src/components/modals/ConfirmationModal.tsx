@@ -2,6 +2,8 @@ import React from 'react';
 import { Button } from '@tremor/react';
 import Portal from '../Portal';
 import { useAuthStore } from '../../stores/authStore';
+import { useCurrentTheme } from '../../stores/colorThemeStore';
+import { useTranslation } from 'react-i18next';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -21,14 +23,18 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   onConfirm,
   title,
   message,
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
+  confirmText,
+  cancelText,
   type = 'danger',
   icon,
 }) => {
   const { profile } = useAuthStore();
-  const isVip = profile?.account_type === 'vip';
-  const isPro = profile?.account_type === 'pro';
+  const { t } = useTranslation();
+  const acct = profile?.account_type || profile?.subscription || 'free';
+  const theme = useCurrentTheme(acct);
+
+  const resolvedConfirmText = confirmText || t('modal.confirm.confirm');
+  const resolvedCancelText = cancelText || t('modal.confirm.cancel');
 
   if (!isOpen) return null;
 
@@ -53,9 +59,9 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   return (
     <Portal>
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-in fade-in duration-200">
-        <div className={`bg-gradient-to-br ${isVip ? 'from-black to-[#0b0b0b]' : isPro ? 'from-[#071521] to-[#0b2237]' : 'from-[#1a0f14] to-[#2E0C13]'} p-6 rounded-2xl shadow-2xl z-50 text-white max-w-md w-full mx-4 border ${isVip ? 'border-amber-400/30' : isPro ? 'border-cyan-400/30' : 'border-pink-500/30'} relative`}>
+        <div className={`${theme.background} p-6 rounded-2xl shadow-2xl z-50 text-white max-w-md w-full mx-4 border ${theme.accent.border} relative`}>
           {/* Glow Effect */}
-          <div className={`absolute inset-0 rounded-2xl blur-xl ${isVip ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : isPro ? 'bg-gradient-to-r from-cyan-400/10 to-blue-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10'}`}></div>
+          <div className={`absolute inset-0 rounded-2xl blur-xl ${theme.accent.glow.replace('shadow-', 'bg-').replace('/20', '/10').replace('/30', '/10')}`}></div>
 
           {/* Close Button */}
           <button
@@ -88,14 +94,14 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                 onClick={onClose}
                 className="hover:bg-white/10 transition-all duration-200 transform hover:scale-105 bg-gray-700/50 border border-gray-600/50 text-gray-300 hover:text-white"
               >
-                {cancelText}
+                {resolvedCancelText}
               </Button>
               <Button
                 color={type === 'danger' ? 'red' : type === 'warning' ? 'yellow' : 'blue'}
                 onClick={onConfirm}
                 className={`${buttonColors[type]} text-white border-none transition-all duration-200 transform hover:scale-105`}
               >
-                {confirmText}
+                {resolvedConfirmText}
               </Button>
             </div>
           </div>

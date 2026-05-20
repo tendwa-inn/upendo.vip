@@ -3,9 +3,11 @@ import { motion } from 'framer-motion';
 import { useSignUpStore } from '../../stores/signUpStore';
 import { MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 const LocationStep: React.FC = () => {
   const { nextStep, updateFormData } = useSignUpStore();
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLocation = () => {
@@ -28,12 +30,12 @@ const LocationStep: React.FC = () => {
         } catch (error) {
           console.error('Reverse geocoding failed:', error);
           updateFormData({ location: { latitude: position.coords.latitude, longitude: position.coords.longitude, city: 'Your location' } });
-          toast.success('Location captured!');
+          toast.success(t('auth.locationCaptured'));
           nextStep();
         }
       },
       (error) => {
-        toast.error('Could not get location. Please enable it in your browser.');
+        toast.error(t('auth.locationError'));
         setIsLoading(false);
       }
     );
@@ -41,7 +43,7 @@ const LocationStep: React.FC = () => {
 
   const handleSkip = () => {
     updateFormData({ location: { latitude: 40.7128, longitude: -74.0060, city: 'New York' } });
-    toast.success('Location skipped. Using default.');
+    toast.success(t('auth.locationSkipped'));
     nextStep();
   };
 

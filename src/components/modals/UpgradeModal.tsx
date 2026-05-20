@@ -1,12 +1,14 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { X, Ghost } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface UpgradeModalProps {
   onClose: () => void;
 }
 
 const UpgradeModal: React.FC<UpgradeModalProps> = ({ onClose }) => {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
       <motion.div
@@ -34,15 +36,15 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ onClose }) => {
             <Ghost className="absolute bottom-0 left-1/2 text-green-400 w-10 h-10 opacity-60" style={{ animation: 'float 3.5s ease-in-out infinite 1s' }} />
             <Ghost className="absolute bottom-1/4 left-0 text-white w-14 h-14 opacity-75" style={{ animation: 'float 4.5s ease-in-out infinite 1.5s' }} />
           </div>
-          <h2 className="text-2xl font-bold text-center mb-4">You are one step to finding your Upendo</h2>
-          <p className="text-center text-gray-300 mb-6">Reach us via Upendo Chat on WhatsApp to upgrade</p>
+          <h2 className="text-2xl font-bold text-center mb-4">{t('modal.upgrade.title')}</h2>
+          <p className="text-center text-gray-300 mb-6">{t('modal.upgrade.message')}</p>
           <a
             href="https://wa.me/260968708647?text=Hey%20I%20would%20love%20to%20subscribe%20to%20Upendo"
             target="_blank"
             rel="noopener noreferrer"
             className="w-full font-bold py-3 px-4 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-all duration-300 text-center"
           >
-            Upgrade on WhatsApp
+            {t('modal.upgrade.whatsapp')}
           </a>
         </div>
       </motion.div>

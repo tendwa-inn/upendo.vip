@@ -3,14 +3,16 @@ import { motion } from 'framer-motion';
 import { useSignUpStore } from '../../stores/signUpStore';
 import { User } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 const NameStep: React.FC = () => {
   const { nextStep, updateFormData } = useSignUpStore();
+  const { t } = useTranslation();
   const [name, setName] = useState('');
 
   const handleNext = () => {
     if (name.trim().length < 2) {
-      toast.error('Please enter a valid name');
+      toast.error(t('auth.validName'));
       return;
     }
     updateFormData({ name });
@@ -34,7 +36,7 @@ const NameStep: React.FC = () => {
         value={name}
         onChange={(e) => setName(e.target.value)}
         className="w-full mb-8 px-4 py-3 bg-white/20 border border-white/30 rounded-2xl text-white text-center placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent"
-        placeholder="Enter your first name"
+        placeholder={t('auth.namePlaceholder')}
         required
       />
 

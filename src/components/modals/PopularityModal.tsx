@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { X, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface PopularityModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface PopularityModalProps {
 }
 
 const PopularityGauge: React.FC<{ score: number, accountType: string }> = ({ score, accountType }) => {
+  const { t } = useTranslation();
   const percentage = Math.max(0, Math.min(100, score));
   
   const color = (() => {
@@ -53,13 +55,14 @@ const PopularityGauge: React.FC<{ score: number, accountType: string }> = ({ sco
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className={`text-4xl font-bold ${color}`}>{percentage}</span>
-        <span className="text-xs text-gray-400">Score</span>
+        <span className="text-xs text-gray-400">{t('modal.popularity.score')}</span>
       </div>
     </div>
   );
 };
 
 const PopularityModal: React.FC<PopularityModalProps> = ({ isOpen, onClose, popularityScore, strikes, accountType }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   return (
@@ -73,7 +76,7 @@ const PopularityModal: React.FC<PopularityModalProps> = ({ isOpen, onClose, popu
         }`}
       >
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Your Profile Standing</h2>
+          <h2 className="text-xl font-bold">{t('modal.popularity.standing')}</h2>
           <button onClick={onClose} className="p-1 rounded-full hover:bg-white/10">
             <X className="w-5 h-5" />
           </button>
@@ -81,24 +84,24 @@ const PopularityModal: React.FC<PopularityModalProps> = ({ isOpen, onClose, popu
 
         <div className="text-center mb-6">
           <PopularityGauge score={popularityScore} accountType={accountType} />
-          <p className="text-xs text-gray-400 mt-2">This score affects your visibility to others.</p>
+          <p className="text-xs text-gray-400 mt-2">{t('modal.popularity.visibility')}</p>
         </div>
 
         <div className="bg-white/5 p-4 rounded-lg">
           <h3 className="font-semibold mb-2 flex items-center">
             <AlertTriangle className="w-4 h-4 mr-2 text-yellow-400" />
-            Profile Strikes
+            {t('modal.popularity.strikes')}
           </h3>
           {strikes > 0 ? (
-            <p className="text-red-400 font-bold text-lg">{strikes} strike(s)</p>
+            <p className="text-red-400 font-bold text-lg">{t('modal.popularity.strikeCount', { count: strikes })}</p>
           ) : (
             <div className="flex items-center text-green-400">
               <ShieldCheck className="w-4 h-4 mr-2" />
-              <p className="text-sm">No strikes. Your profile is in good standing!</p>
+              <p className="text-sm">{t('modal.popularity.noStrikes')}</p>
             </div>
           )}
           <p className="text-xs text-gray-400 mt-2">
-            Strikes are given for violating community guidelines, such as using inappropriate language.
+            {t('modal.popularity.strikesInfo')}
           </p>
         </div>
 
@@ -110,7 +113,7 @@ const PopularityModal: React.FC<PopularityModalProps> = ({ isOpen, onClose, popu
             'bg-pink-600 text-white hover:bg-pink-700'
           }`}
         >
-          Close
+          {t('modal.popularity.close')}
         </button>
       </motion.div>
     </div>

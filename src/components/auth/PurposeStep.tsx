@@ -3,11 +3,13 @@ import { motion } from 'framer-motion';
 import { useSignUpStore } from '../../stores/signUpStore';
 import { Heart } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 const purposes = ['Friendship', 'Dating', 'Hookups', 'Serious Relationship'];
 
 const PurposeStep: React.FC = () => {
   const { nextStep, updateFormData } = useSignUpStore();
+  const { t } = useTranslation();
   const [selectedPurposes, setSelectedPurposes] = useState<string[]>([]);
 
   const togglePurpose = (purpose: string) => {
@@ -20,7 +22,7 @@ const PurposeStep: React.FC = () => {
 
   const handleNext = () => {
     if (selectedPurposes.length === 0) {
-      toast.error('Please select at least one option');
+      toast.error(t('auth.selectOption'));
       return;
     }
     updateFormData({ hereFor: selectedPurposes as any });

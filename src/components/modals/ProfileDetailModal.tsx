@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { User } from '../../types';
+import { useTranslation } from 'react-i18next';
 
 interface ProfileDetailModalProps {
   user: User | null;
@@ -10,6 +11,7 @@ interface ProfileDetailModalProps {
 }
 
 const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({ user, isOpen, onClose }) => {
+  const { t } = useTranslation();
   if (!user) return null;
 
   return (
@@ -49,12 +51,12 @@ const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({ user, isOpen, o
               </div>
 
               <div className="mt-8">
-                <h3 className="text-xl font-semibold mb-4">About Me</h3>
+                <h3 className="text-xl font-semibold mb-4">{t('modal.profileDetail.aboutMe')}</h3>
                 <p className="text-gray-300">{user.bio}</p>
               </div>
 
               <div className="mt-8">
-                <h3 className="text-xl font-semibold mb-4">Interests</h3>
+                <h3 className="text-xl font-semibold mb-4">{t('modal.profileDetail.interests')}</h3>
                 <div className="flex flex-wrap gap-2">
                   {user.interests.map(interest => (
                     <span key={interest} className="bg-gray-700 text-white px-3 py-1 rounded-full text-sm">
@@ -65,7 +67,7 @@ const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({ user, isOpen, o
               </div>
 
               <div className="mt-8">
-                <h3 className="text-xl font-semibold mb-4">Here For</h3>
+                <h3 className="text-xl font-semibold mb-4">{t('modal.profileDetail.hereFor')}</h3>
                 <div className="flex flex-wrap gap-2">
                   {user.hereFor.map(purpose => (
                     <span key={purpose} className="bg-gray-700 text-white px-3 py-1 rounded-full text-sm">
@@ -77,28 +79,28 @@ const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({ user, isOpen, o
               
               <div className="mt-8 grid grid-cols-2 gap-6 text-sm">
                 <div>
-                  <p className="font-semibold text-gray-400">Height</p>
-                  <p>{user.height ? `${user.height} cm` : 'Not specified'}</p>
+                  <p className="font-semibold text-gray-400">{t('height')}</p>
+                  <p>{user.height ? `${user.height} cm` : t('modal.profileDetail.notSpecified')}</p>
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-400">Education</p>
-                  <p className="capitalize">{user.education || 'Not specified'}</p>
+                  <p className="font-semibold text-gray-400">{t('education')}</p>
+                  <p className="capitalize">{user.education || t('modal.profileDetail.notSpecified')}</p>
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-400">Religion</p>
-                  <p>{user.religion || 'Not specified'}</p>
+                  <p className="font-semibold text-gray-400">{t('religion')}</p>
+                  <p>{user.religion || t('modal.profileDetail.notSpecified')}</p>
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-400">First Date</p>
-                  <p className="capitalize">{user.firstDate?.replace('-',' ') || 'Not specified'}</p>
+                  <p className="font-semibold text-gray-400">{t('profile.details.firstDate')}</p>
+                  <p className="capitalize">{user.firstDate?.replace('-',' ') || t('modal.profileDetail.notSpecified')}</p>
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-400">Drinking</p>
-                  <p className="capitalize">{user.drinking || 'Not specified'}</p>
+                  <p className="font-semibold text-gray-400">{t('profile.details.drinking')}</p>
+                  <p className="capitalize">{user.drinking || t('modal.profileDetail.notSpecified')}</p>
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-400">Smoking</p>
-                  <p className="capitalize">{user.smoking || 'Not specified'}</p>
+                  <p className="font-semibold text-gray-400">{t('profile.details.smoking')}</p>
+                  <p className="capitalize">{user.smoking || t('modal.profileDetail.notSpecified')}</p>
                 </div>
               </div>
             </div>

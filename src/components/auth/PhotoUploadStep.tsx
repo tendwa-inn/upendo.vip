@@ -3,9 +3,11 @@ import { motion } from 'framer-motion';
 import { useSignUpStore } from '../../stores/signUpStore';
 import { Camera, Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 const PhotoUploadStep: React.FC = () => {
   const { nextStep, updateFormData } = useSignUpStore();
+  const { t } = useTranslation();
   const [photos, setPhotos] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -23,7 +25,7 @@ const PhotoUploadStep: React.FC = () => {
 
   const handleNext = () => {
     if (photos.length < 3) {
-      toast.error('Please upload at least 3 photos');
+      toast.error(t('auth.uploadPhotos'));
       return;
     }
     updateFormData({ photos });

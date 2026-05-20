@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useSignUpStore } from '../../stores/signUpStore';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 const InterestsStep: React.FC = () => {
   const { formData, updateData, nextStep } = useSignUpStore();
+  const { t } = useTranslation();
   const [selectedInterests, setSelectedInterests] = useState<string[]>(formData.interests || []);
 
   const interests = ['Travel', 'Movies', 'Music', 'Gaming', 'Reading', 'Sports', 'Cooking', 'Art'];
@@ -15,7 +17,7 @@ const InterestsStep: React.FC = () => {
         return prev.filter((i) => i !== interest);
       } else {
         if (prev.length >= 5) {
-          toast.error('You can select up to 5 interests.');
+          toast.error(t('auth.maxInterests'));
           return prev;
         }
         return [...prev, interest];
@@ -25,7 +27,7 @@ const InterestsStep: React.FC = () => {
 
   const handleNext = () => {
     if (selectedInterests.length < 3) {
-      toast.error('Please select at least 3 interests.');
+      toast.error(t('auth.minInterests'));
       return;
     }
     updateData({ interests: selectedInterests });

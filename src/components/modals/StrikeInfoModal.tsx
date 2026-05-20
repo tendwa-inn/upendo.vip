@@ -2,9 +2,11 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { X, ShieldAlert, BookOpen } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 
 const StrikeInfoModal = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
 
   if (!isOpen) return null;
 
@@ -24,11 +26,11 @@ const StrikeInfoModal = ({ isOpen, onClose }) => {
         
         <div className="text-center mb-6">
           <ShieldAlert className="w-16 h-16 mx-auto text-yellow-400" />
-          <h2 className="text-2xl font-bold text-white mt-4">Community Guideline Strike</h2>
+          <h2 className="text-2xl font-bold text-white mt-4">{t('modal.strike.title')}</h2>
         </div>
 
         <p className="text-gray-300 text-center mb-8">
-          Our community is built on respect. This strike was issued because of content that violates our policies against inappropriate language or profanity. Please review our guidelines to ensure a safe and positive experience for everyone.
+          {t('modal.strike.message')}
         </p>
 
         <div className="space-y-4">
@@ -39,7 +41,7 @@ const StrikeInfoModal = ({ isOpen, onClose }) => {
             className="w-full flex items-center justify-center gap-3 py-3 bg-white/10 text-white font-semibold rounded-lg hover:bg-white/20 transition-colors"
           >
             <BookOpen className="w-5 h-5" />
-            Read Community Guidelines
+            {t('modal.strike.readGuidelines')}
           </a>
 
         </div>

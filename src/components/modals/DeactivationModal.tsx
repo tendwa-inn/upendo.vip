@@ -3,18 +3,22 @@ import { Button } from '@tremor/react';
 import Portal from '../Portal';
 import { X } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
-import DeleteConfirmationModal from './DeleteConfirmationModal';
+import { useCurrentTheme } from '../../stores/colorThemeStore';
+import { useTranslation } from 'react-i18next';
 
 const DeactivationModal = ({ onClose, onDeactivate }) => {
+  const { t } = useTranslation();
+  const { profile } = useAuthStore();
+  const colorTheme = useCurrentTheme(profile?.account_type || 'free');
   const [reason, setReason] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const reasons = [
-    'Too much time on Upendo',
-    'I cannot find matches',
-    'The app is not for me',
-    'I met someone',
-    'Other',
+    'deactivate.reasons.time',
+    'deactivate.reasons.noMatches',
+    'deactivate.reasons.notForMe',
+    'deactivate.reasons.metSomeone',
+    'deactivate.reasons.other',
   ];
 
   const handleDeactivate = () => {
@@ -24,27 +28,24 @@ const DeactivationModal = ({ onClose, onDeactivate }) => {
   return (
     <Portal>
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-        <div className="bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] rounded-2xl p-8 w-full max-w-lg text-white border border-pink-500/30 relative shadow-2xl">
-          {/* Glow Effect */}
-          <div className="absolute inset-0 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-2xl blur-xl"></div>
+        <div className={`rounded-2xl p-8 w-full max-w-lg text-white relative shadow-2xl ${colorTheme.background}`}>
+          <div className={`absolute inset-0 rounded-2xl blur-xl ${colorTheme.accent.glow}`}></div>
 
           <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-white/10 transition-all duration-200 hover:scale-110 z-10">
             <X className="w-6 h-6" />
           </button>
 
           <div className="relative z-10">
-            <h2 className="text-2xl font-bold text-white mb-4">Deactivate your account?</h2>
-            <p className="text-gray-300 mb-6">
-              This will deactivate your account, making it dormant and hidden from other users.
-              If you do not log back in within 30 days, your account and all its data will be permanently deleted.
-              Your feedback helps us improve. Please select a reason for leaving.
-            </p>
+            <h2 className="text-2xl font-bold text-white mb-4">{t('deactivate.title')}</h2>
+            <p className="text-gray-300 mb-6">{t('deactivate.description')}</p>
             <div className="space-y-3 mb-6">
               {reasons.map(r => (
                 <button key={r} onClick={() => setReason(r)} className={`w-full p-3 rounded-lg text-left transition-all duration-200 ${
-                  reason === r ? 'bg-pink-600 shadow-lg shadow-pink-500/25' : 'bg-white/10 hover:bg-white/20'
+                  reason === r
+                    ? `${colorTheme.button.primary} shadow-lg`
+                    : 'bg-white/10 hover:bg-white/20'
                 }`}>
-                  {r}
+                  {t(r)}
                 </button>
               ))}
             </div>
@@ -52,17 +53,14 @@ const DeactivationModal = ({ onClose, onDeactivate }) => {
               onClick={handleDeactivate}
               disabled={!reason}
               color="red"
-              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white border-none transition-all duration-200 transform hover:scale-105 shadow-lg shadow-red-500/25"
+              className={`w-full ${colorTheme.button.primary} ${colorTheme.button.primaryHover} text-white border-none transition-all duration-200 transform hover:scale-105 shadow-lg`}
             >
-              Confirm Deactivation
+              {t('deactivate.confirm')}
             </Button>
           </div>
         </div>
         {showDeleteConfirm && (
-          <DeleteConfirmationModal 
-            onClose={() => setShowDeleteConfirm(false)}
-            onConfirm={handleDelete}
-          />
+          <div />
         )}
       </div>
     </Portal>
