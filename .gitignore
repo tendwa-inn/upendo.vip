@@ -1,6 +1,40 @@
 
 # Environment variables
 .env
+.env.local
+.env.*.local
+
+# Dependencies
 node_modules
+
+# Build output
 dist
+
+# Backups
 BACKUP_NOW.zip
+upendo-clean/
+upendo v1/
+
+# Service worker artifacts
+service worker/
+__MACOSX/
+
+# Vercel
+.vercel/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Debug logs
+npm-debug.log*
+
+# CSV with API keys
+public/GIFS/gif_key.csv
+
+# SQL backups
+*.sql.bak
