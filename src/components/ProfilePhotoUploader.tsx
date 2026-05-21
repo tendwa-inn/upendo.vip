@@ -4,11 +4,14 @@ import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { UploadCloud, X, Edit } from 'lucide-react';
 import PhotoCropModal from './PhotoCropModal';
+import { useCurrentTheme } from '../stores/colorThemeStore';
+import { useTranslation } from 'react-i18next';
 
 const ProfilePhotoUploader: React.FC<{ maxPhotos?: number }> = ({ maxPhotos = 6 }) => {
+  const { t } = useTranslation();
   const { user, updateUserProfile, profile } = useAuthStore();
-  const isVip = profile?.account_type === 'vip';
-  const isPro = profile?.account_type === 'pro';
+  const acct = profile?.account_type || profile?.subscription || 'free';
+  const theme = useCurrentTheme(acct);
   const [photos, setPhotos] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -78,11 +81,11 @@ const ProfilePhotoUploader: React.FC<{ maxPhotos?: number }> = ({ maxPhotos = 6 
 
   const handleSavePhotos = async () => {
     if (!user) {
-      toast.error('You must be logged in to upload photos.');
+      toast.error(t('photo.notLoggedIn'));
       return;
     }
     if (photos.length < 1) {
-      toast.error('Please select at least one photo to upload.');
+      toast.error(t('photo.selectPhoto'));
       return;
     }
 
@@ -139,7 +142,7 @@ const ProfilePhotoUploader: React.FC<{ maxPhotos?: number }> = ({ maxPhotos = 6 
       }
 
       updateUserProfile({ photos: newPhotos });
-      toast.success('Photos uploaded successfully!', { id: uploadToastId });
+      toast.success(t('photo.uploadSuccess'), { id: uploadToastId });
       setPhotos([]);
       setPreviews([]);
     } catch (error: any) {
@@ -150,33 +153,59 @@ const ProfilePhotoUploader: React.FC<{ maxPhotos?: number }> = ({ maxPhotos = 6 
   };
 
   return (
-    <div className="w-full max-w-md p-4">
-      <div className="grid grid-cols-3 gap-4 mb-6 w-full">
+    <div className="w-full max-w-md">
+      {/* Header */}
+      <div className="text-center mb-5">
+        <h3 className="text-lg font-bold text-white">Add Photos</h3>
+        <p className="text-xs text-white/50 mt-1">{photos.length > 0 ? `${photos.length} of ${maxPhotos} selected` : `Select up to ${maxPhotos} photos`}</p>
+      </div>
+
+      {/* Photo grid */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
         {previews.map((preview, index) => (
-          <div key={index} className="relative aspect-square group">
-            <img src={preview} alt={`preview ${index}`} className="w-full h-full object-cover rounded-lg" />
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <button onClick={() => openCropper(index)} className="p-2 bg-white/20 text-white rounded-full hover:bg-white/30">
+          <div key={index} className="relative aspect-square rounded-xl overflow-hidden group">
+            <img src={preview} alt={`preview ${index}`} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              <button onClick={() => openCropper(index)} className="p-2 bg-white/20 backdrop-blur-sm text-white rounded-full hover:bg-white/30 transition-colors">
                 <Edit className="w-4 h-4" />
               </button>
-              <button onClick={() => removePhoto(index)} className="p-2 bg-white/20 text-white rounded-full hover:bg-white/30">
+              <button onClick={() => removePhoto(index)} className="p-2 bg-red-500/60 backdrop-blur-sm text-white rounded-full hover:bg-red-500/80 transition-colors">
                 <X className="w-4 h-4" />
               </button>
+            </div>
+            {/* Number badge */}
+            <div className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center">
+              <span className="text-[10px] font-bold text-white">{index + 1}</span>
             </div>
           </div>
         ))}
         {photos.length < maxPhotos && (
-          <label htmlFor="photo-upload" className="cursor-pointer flex items-center justify-center border-2 border-dashed border-gray-500 rounded-lg aspect-square hover:bg-gray-700 transition-colors">
-                                                  <UploadCloud className="w-8 h-8 text-gray-400 opacity-50" />
+          <label htmlFor="photo-upload" className={`cursor-pointer flex flex-col items-center justify-center gap-1.5 border-2 border-dashed ${theme.accent.border.replace('/30', '/40')} rounded-xl aspect-square bg-white/5 hover:bg-white/10 hover:border-white/40 transition-all duration-300 group`}>
+            <div className={`${theme.button.primary} p-2.5 rounded-full transition-transform duration-300 group-hover:scale-110`}>
+              <UploadCloud className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-[10px] text-white/40 group-hover:text-white/60 transition-colors">Browse</span>
             <input id="photo-upload" type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
           </label>
         )}
       </div>
-      <button onClick={handleSavePhotos} disabled={uploading || photos.length === 0} className={`w-full font-bold py-3 px-4 rounded-xl transition-all duration-300 disabled:cursor-not-allowed ${
-        isVip ? 'bg-amber-400 hover:bg-amber-500 text-black disabled:bg-amber-800' : isPro ? 'bg-cyan-400 hover:bg-cyan-500 text-white disabled:bg-cyan-800' : 'bg-green-600 hover:bg-green-700 text-white disabled:bg-green-800'
-      }`}>
-        {uploading ? 'Uploading...' : 'Save Photos'}
-      </button>
+
+      {/* Action buttons */}
+      <div className="flex gap-3">
+        <button
+          onClick={handleSavePhotos}
+          disabled={uploading || photos.length === 0}
+          className={`flex-1 font-bold py-3 px-4 rounded-xl transition-all duration-300 disabled:cursor-not-allowed ${theme.button.primary} ${theme.button.primaryHover} text-white disabled:opacity-40`}
+        >
+          {uploading ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Uploading...
+            </span>
+          ) : `Upload ${photos.length > 0 ? `(${photos.length})` : ''}`}
+        </button>
+      </div>
+
       {currentImageToCrop && (
         <PhotoCropModal
           isOpen={cropModalOpen}

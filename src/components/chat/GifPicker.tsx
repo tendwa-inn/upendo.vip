@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 interface GifPickerProps {
   onSelect: (gifUrl: string) => void;
@@ -7,6 +8,7 @@ interface GifPickerProps {
 }
 
 const GifPicker: React.FC<GifPickerProps> = ({ onSelect, onClose }) => {
+  const { t } = useTranslation();
   const [gifs, setGifs] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -46,7 +48,7 @@ const GifPicker: React.FC<GifPickerProps> = ({ onSelect, onClose }) => {
       </div>
       <input
         type="text"
-        placeholder="Search for a GIF..."
+        placeholder={t('gifPicker.placeholder')}
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
         className="w-full bg-white/10 rounded-full px-4 py-2 text-sm outline-none mb-4"

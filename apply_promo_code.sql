@@ -12,7 +12,7 @@ DECLARE
 BEGIN
   -- Check if the user has already applied this promo code
   IF EXISTS (SELECT 1 FROM user_promos WHERE user_id = p_user_id AND promo_code_id = p_promo_code_id) THEN
-    RAISE EXCEPTION 'You have already used this promo code.';
+    RAISE EXCEPTION 'Sorry, you cannot enter the same promo code twice, buddy.';
   END IF;
 
   -- Get the duration of the promo code

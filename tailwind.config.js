@@ -71,6 +71,18 @@ export default {
         'romantic-soft': '0 5px 15px rgba(236, 72, 153, 0.2)',
         'vip': '0 0 20px rgba(255, 215, 0, 0.3)',
       },
+      fontSize: {
+        'xs': ['0.75rem', { lineHeight: '1rem' }],
+        'sm': ['0.875rem', { lineHeight: '1.25rem' }],
+        'base': ['0.9375rem', { lineHeight: '1.5rem' }], // Slightly smaller base
+        'lg': ['1.0625rem', { lineHeight: '1.75rem' }], // Slightly smaller lg
+        'xl': ['1.1875rem', { lineHeight: '1.875rem' }], // Slightly smaller xl
+        '2xl': ['1.375rem', { lineHeight: '2rem' }], // Slightly smaller 2xl
+        '3xl': ['1.625rem', { lineHeight: '2.25rem' }], // Slightly smaller 3xl
+        '4xl': ['2rem', { lineHeight: '2.5rem' }], // Slightly smaller 4xl
+        '5xl': ['2.5rem', { lineHeight: '3rem' }], // Slightly smaller 5xl
+        '6xl': ['3rem', { lineHeight: '3.5rem' }], // Slightly smaller 6xl
+      },
     },
   },
   plugins: [],

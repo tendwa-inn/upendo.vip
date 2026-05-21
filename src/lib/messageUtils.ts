@@ -12,8 +12,14 @@ export const normalizeMessage = (msg: any) => {
   }
 
   return {
-    ...msg,
+    id: msg.id,
+    matchId: msg.match_id,
+    senderId: msg.sender_id,
     content,
+    type: msg.type,
     timestamp: msg.created_at,
+    isRead: msg.is_read ?? false,
+    reply_to: msg.reply_to,
+    reply_content: msg.reply_content,
   };
 };

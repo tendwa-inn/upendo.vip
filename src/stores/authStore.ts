@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -6,6 +5,7 @@ import { Session, User as SupabaseUser, RealtimeChannel } from '@supabase/supaba
 import { User } from '../types';
 import { wordFilterService } from '../services/wordFilterService';
 import { recordUserActivity } from '../services/popularityService';
+import { initOneSignal } from '../lib/onesignal';
 
 import { useNotificationStore } from './notificationStore';
 import { useMatchStore } from './matchStore';
@@ -13,11 +13,15 @@ import { useDiscoveryStore } from './discoveryStore';
 import { useLikesStore } from './likesStore';
 import { useViewsStore } from './viewsStore';
 import { useSwipeStore } from './swipeStore';
+import { useOnboardingStore } from './onboardingStore';
+import { systemMessengerService } from '../services/systemMessengerService';
 
 interface AuthState {
   session: Session | null;
   user: SupabaseUser | null;
   profile: User | null;
+  isProfileComplete: boolean;
+  hasAllRequiredFields: boolean;
   isAdmin: boolean;
   loading: boolean;
   isSuspended: boolean;
@@ -35,7 +39,7 @@ interface AuthState {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   updateUserProfile: (updateData: any, onSuccess?: () => void) => Promise<void>;
-  createProfile: (formData: any, user: SupabaseUser) => Promise<void>;
+  createProfile: (formData: any) => Promise<void>;
   incrementMessageRequests: () => void;
   signUpWithEmail: (email, password) => Promise<any>;
   applyPromoCode: (promoCode: string) => Promise<void>;
@@ -48,6 +52,8 @@ const initialState = {
   session: null,
   user: null,
   profile: null,
+  isProfileComplete: false,
+  hasAllRequiredFields: false,
   isAdmin: false,
   loading: true,
   isSuspended: false,
@@ -60,10 +66,27 @@ const initialState = {
   profileLoading: true,
 };
 
+const _calculateIsProfileComplete = (profile: User | null): boolean => {
+  if (!profile) return false;
+  return !!profile && !!profile.name && !!profile.gender && (profile as any).onboarding_completed === true;
+};
+
+const _hasAllRequiredFields = (profile: User | null): boolean => {
+  if (!profile) return false;
+  
+  // Check required fields
+  const hasBio = !!profile.bio && profile.bio.trim().length > 0;
+  const hasHereFor = Array.isArray(profile.hereFor) && profile.hereFor.length > 0;
+  const hasPhotos = Array.isArray(profile.photos) && profile.photos.length >= 3;
+  const hasLocation = !!profile.location?.name;
+  
+  return hasBio && hasHereFor && hasPhotos && hasLocation;
+};
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   ...initialState,
   setSession: (session) => set({ session, user: session?.user ?? null }),
-  setProfile: (profile) => set({ profile }),
+  setProfile: (profile) => set({ profile, isProfileComplete: _calculateIsProfileComplete(profile), hasAllRequiredFields: _hasAllRequiredFields(profile) }),
   reset: () => set(initialState),
 
   checkUser: async () => {
@@ -74,26 +97,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { data: { session: freshSession }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
-        console.error('Error getting session:', sessionError);
-        set({ 
-          session: null, 
-          user: null, 
-          profile: null, 
-          isAdmin: false, 
-          loading: false, 
+
+        set({
+          session: null,
+          user: null,
+          profile: null,
+          isProfileComplete: false,
+          hasAllRequiredFields: false,
+          isAdmin: false,
+          loading: false,
           isInitialized: true,
-          profileLoading: false 
+          profileLoading: false
         });
         return;
       }
       
       // Set session and mark auth as initialized, but keep profile loading
-      set({ 
-        session: freshSession, 
-        user: freshSession?.user ?? null, 
-        isInitialized: true,
+      set({
+        session: freshSession,
+        user: freshSession?.user ?? null,
         loading: true,
-        profileLoading: true 
+        profileLoading: true
       });
       
       if (freshSession?.user) {
@@ -102,35 +126,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         
         // Add timeout for profile loading to prevent infinite waiting
         const profileTimeout = setTimeout(() => {
-          console.warn('Profile loading timeout - proceeding without profile');
+  
           set({ profileLoading: false });
         }, 10000); // 10 second timeout
         
         try {
-          const { data: profiles, error: profileError } = await supabase
+          const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', freshSession.user.id)
-            .abortSignal(new AbortController().signal); // Add abort signal for better cancellation
+            .maybeSingle();
 
           clearTimeout(profileTimeout);
 
           if (profileError) {
-            console.error("Error fetching profile:", profileError);
-            set({ profile: null, loading: false, profileLoading: false });
+
+            set({ profile: null, isProfileComplete: false, hasAllRequiredFields: false, loading: false, profileLoading: false, isInitialized: true });
             return;
           }
 
-        try {
-          const profile = profiles && profiles.length > 0 ? profiles[0] : null;
-          console.log('[DEBUG] Raw profile keys from authStore:', profile ? Object.keys(profile) : 'No profile found');
+    
 
           if (!profile) {
-            set({ profile: null, loading: false, profileLoading: false });
-            return; 
+            set({ profile: null, isProfileComplete: false, hasAllRequiredFields: false, loading: false, profileLoading: false, isInitialized: true });
+            return;
           }
 
-          const processedProfile: User = { 
+          const processedProfile: User = {
             ...profile,
             lastActive: profile.last_active_at || profile.lastActive || new Date(),
             account_type: profile.account_type || profile.subscription || 'free',
@@ -141,6 +163,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             onboarding_completed: profile.onboarding_completed || (profile as any).onboarded || false,
             // Handle strikes safely
             strikes: profile.strikes || 0,
+            firstDate: profile.first_date || profile.firstDate || '',
+            occupation: profile.occupation || '',
+            kids: profile.kids || '',
           } as User;
 
         if ((profile.strikes || 0) >= 3) {
@@ -177,17 +202,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           processedProfile.dateOfBirth = new Date((processedProfile as any).dob);
         }
 
-        const isVip = (processedProfile as any).account_type === 'vip';
-        const isPro = (processedProfile as any).account_type === 'pro';
+        // Check subscription expiry — promo-granted tiers expire, permanent ones have null expiry
+        const subExpiry = (processedProfile as any).subscription_expires_at;
+        const subscriptionExpired = subExpiry ? new Date(subExpiry) <= new Date() : false;
+        const effectiveAccountType = subscriptionExpired ? 'free' : ((processedProfile as any).account_type || 'free');
+        const isVip = effectiveAccountType === 'vip';
+        const isPro = effectiveAccountType === 'pro';
 
-        // Debugging authStore profile values
-        console.log('AUTHSTORE DEBUG: processedProfile', processedProfile);
-        console.log('AUTHSTORE DEBUG: processedProfile.account_type', (processedProfile as any).account_type);
-        console.log('AUTHSTORE DEBUG: isVip', isVip);
-        console.log('AUTHSTORE DEBUG: isPro', isPro);
+        // Auto-revert expired subscription in DB
+        if (subscriptionExpired && (processedProfile as any).account_type !== 'free') {
+          supabase.from('profiles').update({ account_type: 'free', subscription_expires_at: null }).eq('id', freshSession.user.id).then();
+          (processedProfile as any).account_type = 'free';
+        }
 
-        set({ 
-          profile: processedProfile, 
+        // Initialize OneSignal after successful authentication
+        try {
+          await initOneSignal(freshSession.user.id);
+        } catch (onesignalError) {
+
+          // Continue even if OneSignal fails - don't block the app
+        }
+
+        // Initialize realtime listeners early after login
+        try {
+          useMatchStore.getState().initializeRealtime();
+        } catch (realtimeError) {
+
+          // Continue even if realtime fails - don't block the app
+        }
+
+        set({
+          profile: processedProfile,
+          isProfileComplete: _calculateIsProfileComplete(processedProfile),
+          hasAllRequiredFields: _hasAllRequiredFields(processedProfile),
           isAdmin: (processedProfile as any).role === 'admin',
           isSuspended: false,
           isPro,
@@ -195,42 +242,88 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           messageRequestsSent: (processedProfile as any).message_requests_sent || 0,
           messageRequestResetDate: (processedProfile as any).message_request_reset_date ? new Date((processedProfile as any).message_request_reset_date) : null,
           loading: false,
-          profileLoading: false
+          profileLoading: false,
+          isInitialized: true
         });
 
         // Set up a real-time listener for the user's profile, if one doesn't exist
         if (!get().channel) {
           get().fetchInitialData();
+
           const channel = supabase.channel(`profile:${processedProfile.id}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${processedProfile.id}` }, payload => {
-              console.log('Profile updated via subscription:', payload);
-              set((state) => ({
-                profile: {
+              // Process location data properly for local state
+              const updatedProfile = { ...payload.new };
+              if (updatedProfile.location && typeof updatedProfile.location === 'string') {
+                const pointRegex = /POINT\(([-\d.]+) ([-\d.]+)\)/;
+                const match = (updatedProfile.location as string).match(pointRegex);
+                if (match) {
+                  updatedProfile.location = {
+                    name: (updatedProfile as any).location_name || '',
+                    longitude: parseFloat(match[1]),
+                    latitude: parseFloat(match[2]),
+                  };
+                } else if ((updatedProfile as any).location_name) {
+                  updatedProfile.location = {
+                    name: (updatedProfile as any).location_name,
+                    longitude: null,
+                    latitude: null,
+                  };
+                }
+              } else if ((updatedProfile as any).location_name) {
+                updatedProfile.location = {
+                  name: (updatedProfile as any).location_name,
+                  longitude: null,
+                  latitude: null,
+                };
+              }
+              
+              set((state) => {
+                const newProfile = {
                   ...state.profile,
-                  ...payload.new,
-                } as User,
-              }));
+                  ...updatedProfile,
+                } as User;
+                return {
+                  profile: newProfile,
+                  isProfileComplete: _calculateIsProfileComplete(newProfile),
+                  hasAllRequiredFields: _hasAllRequiredFields(newProfile),
+                };
+              });
             })
             .subscribe();
           set({ channel });
         }
         } catch (profileError) {
-          console.error("Error processing profile:", profileError);
-          set({ profile: null, loading: false, profileLoading: false });
-        }
-        } catch (error) {
-          console.error("Error in profile fetch block:", error);
-          set({ profile: null, loading: false, profileLoading: false });
+
+          set({ profile: null, isProfileComplete: false, hasAllRequiredFields: false, loading: false, profileLoading: false, isInitialized: true });
         }
 
       } else {
-        set({ profile: null, isAdmin: false, loading: false, profileLoading: false });
+        set({
+          profile: null,
+          isProfileComplete: false,
+          hasAllRequiredFields: false,
+          isAdmin: false,
+          loading: false,
+          profileLoading: false,
+          isInitialized: true,
+          session: null,
+          user: null
+        });
       }
-    } catch (error) {
-      console.error("Error checking user:", error);
-      set({ loading: false, profileLoading: false });
-    } finally {
+
       isChecking = false;
+    } catch (error) {
+      console.error('Error in checkUser:', error);
+      isChecking = false;
+      set({
+        profile: null,
+        isProfileComplete: false,
+        hasAllRequiredFields: false,
+        loading: false,
+        profileLoading: false,
+        isInitialized: true,
+      });
     }
   },
 
@@ -239,12 +332,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/callback`,
+        queryParams: {
+          prompt: 'select_account',
+        },
       },
     });
     if (error) toast.error(error.message);
   },
 
-  signUpWithEmail: async (email, password) => {
+  signUpWithEmail: async (email: string, password) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -259,58 +355,69 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   fetchInitialData: async () => {
     await useNotificationStore.getState().fetchNotifications();
+    // Setup realtime notification subscription
+    useNotificationStore.getState().subscribeToNotifications();
     await useMatchStore.getState().fetchMatches();
     await useDiscoveryStore.getState().fetchPotentialMatches();
     await useLikesStore.getState().fetchUsersWhoLikedMe();
+    await useLikesStore.getState().fetchLikedUserIds();
     await useViewsStore.getState().fetchUsersWhoViewedMe();
     await useSwipeStore.getState().loadSwipeState();
     useLikesStore.getState().listenForNewLikes();
   },
 
   signOut: async () => {
-    const { channel } = get();
-    if (channel) {
-      try {
-        await channel.unsubscribe();
-      } catch (e) {
-        console.warn('Error unsubscribing from channel', e);
-      }
-    }
-    
-    // Clear local session immediately to prevent UI issues
     try {
-      // Clear local storage first
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem('upendo-auth-token');
+      const { channel } = get();
+
+      if (channel) {
+        await channel.unsubscribe();
       }
-      
-      // Attempt signout - network errors are handled by the supabase client wrapper
-      const { error } = await supabase.auth.signOut();
-      
-      if (error && !error.message?.includes('aborted') && !error.message?.includes('network')) {
-        // Only show toast for non-network errors
-        toast.error("Logout failed. Please try again.");
-      }
-      
-    } catch (error: any) {
-      console.warn('SignOut cleanup error:', error);
+
+      // Unsubscribe from notifications
+      useNotificationStore.getState().unsubscribeFromNotifications();
+
+      // Use global logout to ensure complete session termination
+      await supabase.auth.signOut({
+        scope: 'global',
+      });
+
+      // Reset onboarding store so next user starts fresh
+      useOnboardingStore.getState().reset();
+
+      // Reset state after sign-out is complete
+      set({
+        ...initialState,
+        loading: false,
+        profileLoading: false,
+        isInitialized: true,
+      });
+
+    } catch (error) {
+
     }
   },
 
   updateUserProfile: async (updateData: any, onSuccess?: () => void) => {
     const { user, profile } = get();
-    if (!user || !profile) return toast.error("You must be logged in to update your profile.");
+    if (!user || !profile) {
+      toast.error("You must be logged in to update your profile.");
+      return;
+    }
 
     const processedUpdateData = { ...updateData };
     if (updateData.location && typeof updateData.location === 'object' && updateData.location.name && updateData.location.longitude && updateData.location.latitude) {
       processedUpdateData.location = `POINT(${updateData.location.longitude} ${updateData.location.latitude})`;
       processedUpdateData.location_name = updateData.location.name;
     }
-    if (updateData.firstDate && typeof updateData.firstDate === 'object') {
+    if (updateData.firstDate && typeof updateData.firstDate === 'object' && updateData.firstDate.value) {
       processedUpdateData.firstDate = updateData.firstDate.value;
     }
-    if (updateData.loveLanguage && typeof updateData.loveLanguage === 'object') {
+    if (updateData.loveLanguage && typeof updateData.loveLanguage === 'object' && updateData.loveLanguage.value) {
       processedUpdateData.loveLanguage = updateData.loveLanguage.value;
+    }
+    if (updateData.date_of_birth) {
+      processedUpdateData.dob = updateData.date_of_birth;
     }
 
     const { error } = await supabase
@@ -323,18 +430,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } else {
       // Optimistically update the local state
       const newProfile = { ...profile, ...processedUpdateData };
+      
+      // Handle location data properly for local state
+      if (updateData.location && typeof updateData.location === 'object' && updateData.location.name && updateData.location.longitude && updateData.location.latitude) {
+        newProfile.location = {
+          name: updateData.location.name,
+          longitude: updateData.location.longitude,
+          latitude: updateData.location.latitude
+        };
+      }
+      
       set({
         profile: newProfile,
-        isPro: newProfile.account_type === 'pro',
-        isVip: newProfile.account_type === 'vip',
+        isProfileComplete: _calculateIsProfileComplete(newProfile),
+        hasAllRequiredFields: _hasAllRequiredFields(newProfile),
+        isPro: (() => { const exp = (newProfile as any).subscription_expires_at; return exp && new Date(exp) <= new Date() ? false : newProfile.account_type === 'pro'; })(),
+        isVip: (() => { const exp = (newProfile as any).subscription_expires_at; return exp && new Date(exp) <= new Date() ? false : newProfile.account_type === 'vip'; })(),
       });
 
       if (onSuccess) await onSuccess();
       else toast.success("Profile updated!");
     }
+    return;
   },
 
-  createProfile: async (formData: any, user: SupabaseUser) => {
+  createProfile: async (formData: any) => {
+    const { user } = get();
     if (!user) throw new Error('User not authenticated');
     
     const { error } = await supabase.rpc('create_new_user_profile', {
@@ -342,13 +463,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       p_name: formData.name,
       p_birthday: formData.date_of_birth,
       p_gender: formData.gender,
+      p_looking_for: formData.looking_for, // Add this line
       p_location_name: formData.location?.name || '',
-      p_longitude: formData.location?.coordinates?.[0],
-      p_latitude: formData.location?.coordinates?.[1]
+      p_longitude: formData.location?.coordinates?.[0] || null,
+      p_latitude: formData.location?.coordinates?.[1] || null
     });
     
     if (error) throw error;
     await get().checkUser();
+    const { profile, isProfileComplete } = get();
+
+    
+    // Send welcome messages to new user after successful profile creation
+    if (isProfileComplete && profile && (profile as any).onboarding_completed) {
+      try {
+        await systemMessengerService.sendWelcomeMessagesToNewUser(user.id);
+      } catch (welcomeError) {
+
+        // Don't throw error here, as profile creation was successful
+      }
+    }
   },
 
   incrementMessageRequests: () => {
@@ -359,7 +493,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session || !session.user) {
-      return toast.error("You must be logged in to apply a promo code.");
+      toast.error("You must be logged in to apply a promo code.");
+      return;
     }
     const user = session.user;
 
@@ -373,29 +508,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .maybeSingle();
 
       if (promoError || !promoData) {
-        return toast.error('Invalid or expired promo code');
+        toast.error('Invalid or expired promo code');
+        return;
       }
 
       // 2. Calculate the expiration date for the user's redemption
-      const expires_at = promoData.duration_days 
+      const expires_at = promoData.duration_days
         ? new Date(Date.now() + promoData.duration_days * 24 * 60 * 60 * 1000).toISOString()
         : null;
 
-      // DEBUG: Log the session to ensure it's not null
-      console.log("SESSION BEFORE INSERT:", session);
+  
 
       // 3. Call the secure RPC function to redeem the promo code.
-      const { error: insertError } = await supabase.rpc('redeem_promo', { 
-        promo_id: promoData.id, 
-        expiry: expires_at 
+      const { error: insertError } = await supabase.rpc('redeem_promo', {
+        promo_id: promoData.id,
+        expiry: expires_at
       });
 
       if (insertError) {
         // The unique constraint will throw an error if the user has already redeemed it
         if (insertError.code === '23505') { // Unique violation error code
-          return toast.error('You have already used this promo code.');
+          toast.error('Sorry, you cannot enter the same promo code twice, buddy.');
+          return;
         }
-        return toast.error(insertError.message || 'Failed to apply promo code.');
+        toast.error(insertError.message || 'Failed to apply promo code.');
+        return;
       }
 
       toast.success(`Promo '${promoData.name}' applied successfully!`);
@@ -404,5 +541,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       toast.error('An unexpected error occurred while applying the code.');
     }
+    return;
   },
 }));

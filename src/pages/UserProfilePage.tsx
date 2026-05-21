@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { ArrowLeft, Heart, MoreVertical, Flag, Ban, X, Crown, Shield, MapPin, Ghost, Check } from 'lucide-react';
-import { useThemeStore } from '../stores/themeStore';
 import { useAuthStore } from '../stores/authStore';
+import { useCurrentTheme } from '../stores/colorThemeStore';
+import { useThemeStore } from '../stores/themeStore';
 import { useMatchStore } from '../stores/matchStore.tsx';
 import MatchAnimation from '../components/modals/MatchAnimation';
 import { useMatchAnimationStore } from '../stores/matchAnimationStore';
@@ -17,6 +18,11 @@ import ReportUserModal from '../components/modals/ReportUserModal';
 import VerificationBadge from '../components/VerificationBadge';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import PullToRefreshIndicator from '../components/PullToRefreshIndicator';
+import { getUserTheme } from '../stores/colorThemeStore';
+import { getTheme } from '../styles/theme';
+import MessageRequestModal from '../components/modals/MessageRequestModal';
 
 const UserProfilePage: React.FC = () => {
   const { t } = useTranslation();
@@ -49,10 +55,61 @@ const UserProfilePage: React.FC = () => {
   const [likedSent, setLikedSent] = useState(false);
   const [isBlockDialogOpen, setBlockDialogOpen] = useState(false);
   const [isSendingLike, setIsSendingLike] = useState(false);
+  const [messageRequestStatus, setMessageRequestStatus] = useState<'none' | 'pending' | 'accepted' | 'declined'>('none');
+  const [showMessageRequestModal, setShowMessageRequestModal] = useState(false);
+
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    if (!userId) return;
+    
+    try {
+      // Re-fetch user profile
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, age, date_of_birth, dob, photos, bio, location, location_name, interests, hereFor, height, religion, education, drinking, smoking, firstdate, love_language, kids, occupation, account_type, subscription, last_active_at, is_verified')
+        .eq('id', userId)
+        .single();
+        
+      if (error) throw error;
+      
+      let processed: any = { 
+        ...data,
+        lastActive: data.last_active_at || data.lastActive,
+        account_type: data.account_type || data.subscription,
+      };
+      
+      if (processed.location && typeof processed.location === 'string') {
+        const pointRegex = /POINT\(([-\d.]+) ([-\d.]+)\)/;
+        const match = (processed.location as string).match(pointRegex);
+        if (match) {
+          processed.location = {
+            name: processed.location_name || '',
+            longitude: parseFloat(match[1]),
+            latitude: parseFloat(match[2]),
+          };
+        } else if (processed.location_name) {
+          processed.location = {
+            name: processed.location_name,
+            longitude: null,
+            latitude: null,
+          };
+        }
+      }
+      
+      setUser(processed);
+    } catch (error) {
+      console.error('Failed to refresh user profile:', error);
+    }
+  };
+
+  const { pullState, getPullStyles, containerRef } = usePullToRefresh({
+    onRefresh: handleRefresh,
+  });
 
   const acct = (currentProfile as any)?.account_type || (currentProfile as any)?.subscription;
   const isVip = acct === 'vip';
   const isPro = acct === 'pro';
+  const colorTheme = useCurrentTheme(acct || 'free');
 
   const calculateAge = (dob: string | Date) => {
     if (!dob) return null;
@@ -91,7 +148,7 @@ const UserProfilePage: React.FC = () => {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, name, age, date_of_birth, dob, photos, bio, location, location_name, interests, hereFor, height, religion, education, drinking, smoking, firstdate, love_language, kids, occupation, account_type, subscription, last_active_at, is_verified')
+          .select('id, name, age, date_of_birth, dob, photos, bio, location, location_name, interests, hereFor, height, religion, education, drinking, smoking, firstdate, love_language, kids, occupation, account_type, subscription, last_active_at, is_verified, selected_theme_id')
           .eq('id', userId)
           .single();
         if (error) throw error;
@@ -138,6 +195,39 @@ const UserProfilePage: React.FC = () => {
               .maybeSingle();
             if (!likeErr && likeRow) {
               setLikedSent(true);
+            }
+
+            // Check message request status (with error handling for missing table)
+            try {
+              const { data: messageRequest } = await supabase
+                .from('message_requests')
+                .select('status')
+                .match({ 
+                  sender_id: authUser.id, 
+                  receiver_id: processed.id 
+                })
+                .maybeSingle();
+              
+              if (messageRequest) {
+                setMessageRequestStatus(messageRequest.status);
+              } else {
+                // Also check if receiver sent a request to sender (for bidirectional)
+                const { data: reverseRequest } = await supabase
+                  .from('message_requests')
+                  .select('status')
+                  .match({ 
+                    sender_id: processed.id, 
+                    receiver_id: authUser.id 
+                  })
+                  .maybeSingle();
+                
+                if (reverseRequest) {
+                  setMessageRequestStatus(reverseRequest.status);
+                }
+              }
+            } catch (error) {
+              // Table doesn't exist yet, ignore and continue
+              console.warn('Message requests table not found:', error);
             }
           }
 
@@ -201,23 +291,11 @@ const UserProfilePage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className={`flex flex-col items-center justify-center min-h-screen text-white ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
-        {isVip ? (
-          <>
-            <Ghost className="w-14 h-14 text-amber-400 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]" />
-            <p className="text-white/70 text-sm">{t('profile.loading')}</p>
-          </>
-        ) : isPro ? (
-          <>
-            <Ghost className="w-14 h-14 text-cyan-400 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(34,211,238,0.9)]" />
-            <p className="text-white/70 text-sm">{t('profile.loading')}</p>
-          </>
-        ) : (
-          <>
-            <Ghost className="w-14 h-14 text-pink-500 animate-spin mb-3 drop-shadow-[0_0_12px_rgba(236,72,153,0.9)]" />
-            <p className="text-white/70 text-sm">{t('profile.loading')}</p>
-          </>
-        )}
+      <div className={`flex flex-col items-center justify-center min-h-screen text-white ${colorTheme.background}`}>
+        <div className={`animate-spin mb-3 ${colorTheme.accent.loading}`}>
+          <Ghost className="w-14 h-14" />
+        </div>
+        <p className="text-white/70 text-sm">{t('profile.loading')}</p>
       </div>
     );
   }
@@ -240,28 +318,84 @@ const UserProfilePage: React.FC = () => {
 
     if (existingMatch) {
       selectMatch(existingMatch);
+      navigate(`/chat/${existingMatch.id}`);
     } else {
       createMatch(user.id);
+      // Wait a moment for the match to be created
+      setTimeout(() => {
+        const newMatch = matches.find(
+          m => (m.user1.id === authUser.id && m.user2.id === user.id) || (m.user1.id === user.id && m.user2.id === authUser.id)
+        );
+        if (newMatch) {
+          selectMatch(newMatch);
+          navigate(`/chat/${newMatch.id}`);
+        }
+      }, 500);
     }
-    navigate('/chat');
   };
   
   const handleSendMessageRequestProfile = async () => {
     if (!authUser || !user) return;
+
+    // Check if match already exists — go directly to chat
+    const existingMatch = matches.find(
+      m => (m.user1.id === authUser.id && m.user2.id === user.id) || (m.user1.id === user.id && m.user2.id === authUser.id)
+    );
+    if (existingMatch) {
+      selectMatch(existingMatch);
+      navigate(`/chat/${existingMatch.id}`);
+      return;
+    }
+
+    // Check if request already accepted — create match and go to chat
+    const { data: existingRequest } = await supabase
+      .from('message_requests')
+      .select('status')
+      .match({ sender_id: authUser.id, receiver_id: user.id })
+      .maybeSingle();
+
+    if (existingRequest?.status === 'accepted') {
+      await createMatch(user.id);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const newMatch = matches.find(
+        m => (m.user1.id === authUser.id && m.user2.id === user.id) || (m.user1.id === user.id && m.user2.id === authUser.id)
+      );
+      if (newMatch) {
+        selectMatch(newMatch);
+        navigate(`/chat/${newMatch.id}`);
+      }
+      return;
+    }
+
+    // Open modal to type a message
+    setShowMessageRequestModal(true);
+  };
+
+  const handleSendProfileRequest = async (message: string) => {
+    if (!authUser || !user) return;
     try {
-      await supabase.from('message_requests').insert({ sender_id: authUser.id, receiver_id: (user as any).id, status: 'pending' });
+      await supabase.from('message_requests').insert({
+        sender_id: authUser.id,
+        receiver_id: (user as any).id,
+        status: 'pending',
+        message: message || null,
+      });
+
       await supabase.from('notifications').insert({
         user_id: (user as any).id,
         type: 'message-request',
         title: 'Message Request',
-        message: 'Someone wants to chat with you',
+        message: message || 'Someone wants to chat with you',
         actor_id: authUser.id,
       });
+
+      setMessageRequestStatus('pending');
       toast.success(t('toast.messageRequest.sent'));
     } catch (e) {
       console.error('Error sending message request:', e);
       toast.error(t('toast.messageRequest.error'));
     }
+    setShowMessageRequestModal(false);
   };
   
   const handleSendLikeProfile = async () => {
@@ -284,8 +418,10 @@ const UserProfilePage: React.FC = () => {
         .limit(1)
         .maybeSingle();
       if (reciprocal) {
-        await createMatch((user as any).id);
-        showMatchAnimation(user);
+        const newMatch = await createMatch((user as any).id);
+        if (newMatch?.id) {
+          showMatchAnimation(user, newMatch.id);
+        }
       } else {
         // Create a notification for the liked user
         await supabase.from('notifications').insert({
@@ -341,30 +477,31 @@ const UserProfilePage: React.FC = () => {
     if (!value) return null;
     return (
       <div>
-        <p className={`font-semibold ${isDark ? 'text-gray-400' : 'text-gray-400'}`}>{label}</p>
-        <p className={`${capitalize ? 'capitalize' : ''} ${isDark ? 'text-white' : 'text-white'}`}>{value}</p>
+        <p className={`font-semibold text-gray-400`}>{label}</p>
+        <p className={`${capitalize ? 'capitalize' : ''} text-white`}>{value}</p>
       </div>
     );
   };
 
-  const getProfileTheme = (profile) => {
-    if (!profile) return 'free';
-    const accountType = profile.account_type || profile.accountType || profile.subscription;
-    if (accountType === 'vip') return 'vip';
-    if (accountType === 'pro') return 'pro';
-    return 'free';
-  };
-
-  const viewedProfileTheme = getProfileTheme(user);
-  const isVipProfile = viewedProfileTheme === 'vip';
-  const isProProfile = viewedProfileTheme === 'pro';
+  // Get the viewed user's theme (uses their selected_theme_id if set, otherwise their tier default)
+  const viewedAccountType = user?.account_type || user?.subscription || 'free';
+  const viewedTheme = getUserTheme(viewedAccountType, user?.selected_theme_id);
+  const isVipProfile = viewedAccountType === 'vip';
+  const isProProfile = viewedAccountType === 'pro';
   return (
-    <div className={`min-h-screen relative ${isVipProfile ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isProProfile ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
+    <div className={`min-h-screen relative ${viewedTheme.background}`}>
+      {/* Pull to Refresh Indicator */}
+      <PullToRefreshIndicator 
+        pullDistance={pullState.pullDistance}
+        isRefreshing={pullState.isRefreshing}
+        threshold={80}
+      />
+      
       {/* Back Arrow & Menu */}
       <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-center">
-        <Link to="/discover" className={`p-2 rounded-full ${isDark ? 'bg-gray-800/50 text-white' : 'bg-black/20 text-white'} backdrop-blur-md`}>
+        <button onClick={() => navigate(-1)} className={`p-2 rounded-full ${isDark ? 'bg-gray-800/50 text-white' : 'bg-black/20 text-white'} backdrop-blur-md`}>
           <ArrowLeft className="w-6 h-6" />
-        </Link>
+        </button>
         
         {/* 3 Dots Menu */}
         <div className="relative menu-container">
@@ -397,7 +534,7 @@ const UserProfilePage: React.FC = () => {
       </div>
 
       {/* Profile Content */}
-      <div className="flex-1 p-6 pt-16 pb-28">
+      <div ref={containerRef} className="flex-1 p-6 pt-16 pb-28 pull-refresh-container" style={getPullStyles()}>
         <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-4">
           {(user.photos || []).map((photo, index) => (
             <div key={index} className="aspect-square rounded-lg overflow-hidden cursor-pointer" onClick={() => handleImageClick(index)}>
@@ -410,16 +547,10 @@ const UserProfilePage: React.FC = () => {
           {(() => {
             const dob = (user as any).date_of_birth || (user as any).dob || (user as any).birthdate || (user as any).dateOfBirth || (user as any).birthday;
             const age = calculateAge(dob);
-            
-            // Debug logging for accountType
-            console.log('User object:', user);
-            console.log('User accountType:', user.accountType);
-            console.log('Available user fields:', Object.keys(user));
-            
+
             // Check for accountType in different possible field names
             const accountType = user.accountType || user.account_type || user.membership_type || user.membershipType;
-            console.log('Resolved accountType:', accountType);
-            
+
             const isPremium = accountType === 'pro' || accountType === 'vip';
             // Resolve user's vibe: if viewing self and has a local dailyVibe, use it; otherwise deterministic by id
             let vibe: string = assignedVibeForId((user as any).id);
@@ -438,7 +569,7 @@ const UserProfilePage: React.FC = () => {
             return (
               <div className="flex flex-col gap-2 mb-4">
                 <div className="flex items-center gap-2">
-                <h3 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-white'}`}>
+                <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-white'}`}>
                   {user.name} {age}
                 </h3>
                   {accountType === 'vip' && (
@@ -496,14 +627,10 @@ const UserProfilePage: React.FC = () => {
         </div>
 
         <div className="mt-8">
-          <h3 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-white'}`}>{t('profile.sections.interests')}</h3>
+          <h3 className="text-lg font-semibold mb-4 text-white">{t('profile.sections.interests')}</h3>
           <div className="flex flex-wrap gap-2">
             {(user.interests || []).map(interest => (
-              <span key={interest} className={`px-3 py-1 rounded-full text-sm ${
-                isVipProfile ? 'bg-amber-400/20 text-amber-300 border border-amber-400/50'
-                : isProProfile ? 'bg-cyan-500/20 text-cyan-200'
-                : 'bg-rose-800/80 text-rose-200'
-              }`}>
+              <span key={interest} className={`px-3 py-1 rounded-full text-sm bg-white/10 text-white/80 border border-white/20`}>
                 {interest}
               </span>
             ))}
@@ -511,14 +638,10 @@ const UserProfilePage: React.FC = () => {
         </div>
 
         <div className="mt-8">
-          <h3 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-white'}`}>{t('profile.sections.hereFor')}</h3>
+          <h3 className="text-lg font-semibold mb-4 text-white">{t('profile.sections.hereFor')}</h3>
           <div className="flex flex-wrap gap-2">
             {(user.hereFor || []).map(purpose => (
-              <span key={purpose} className={`px-3 py-1 rounded-full text-sm ${
-                isVipProfile ? 'bg-amber-400/20 text-amber-300 border border-amber-400/50'
-                : isProProfile ? 'bg-cyan-500/20 text-cyan-200'
-                : 'bg-rose-800/80 text-rose-200'
-              }`}>
+              <span key={purpose} className={`px-3 py-1 rounded-full text-sm bg-white/10 text-white/80 border border-white/20`}>
                 {purpose}
               </span>
             ))}
@@ -540,14 +663,8 @@ const UserProfilePage: React.FC = () => {
         {/* Action Buttons */}
         <div className="flex space-x-4 mt-8">
           {!likedSent && (
-            <button onClick={handleSendLikeProfile} className={`flex-1 py-3 rounded-full font-semibold transition-all duration-300 ${
-                isVipProfile
-                ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black hover:from-amber-500 hover:to-yellow-600'
-                : isProProfile
-                  ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-white hover:from-cyan-500 hover:to-blue-600'
-                  : 'bg-gradient-to-r from-rose-700 to-rose-800 text-white hover:from-rose-800 hover:to-rose-900'
-            }`}>
-              <Heart className={`w-5 h-5 inline mr-2 ${isVipProfile ? 'text-black' : ''}`} />
+            <button onClick={handleSendLikeProfile} className={`flex-1 py-3 rounded-full font-semibold transition-all duration-300 ${viewedTheme.button.primary} ${viewedTheme.button.primaryHover} text-white`}>
+              <Heart className="w-5 h-5 inline mr-2" />
               {t('profile.sendLike')}
             </button>
           )}
@@ -568,15 +685,57 @@ const UserProfilePage: React.FC = () => {
             const threshold = Number(localStorage.getItem('compatThreshold') || 3);
             const compatibleScore = (interestsOverlap >= 2 ? 1 : 0) + (hereOverlap >= 1 ? 1 : 0) + (drinkMatch ? 1 : 0) + (smokeMatch ? 1 : 0) + (ageClose ? 1 : 0);
             const showMessage = compatibleScore >= threshold;
-            return showMessage ? (
-              <button onClick={handleSendMessageRequestProfile} className={`flex-1 py-3 rounded-full font-semibold border-2 ${
-                isVipProfile
-                  ? 'border-amber-400 text-amber-300 hover:bg-amber-500 hover:text-black'
-                  : isProProfile
-                    ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-500 hover:text-white'
-                    : 'border-rose-700 text-rose-400 hover:bg-rose-700 hover:text-white'
-              }`}>{t('profile.message')}</button>
-            ) : null;
+            
+            if (!showMessage) return null;
+            
+            // Check if there's already an existing match
+            const existingMatch = matches.find(
+              m => (m.user1.id === authUser?.id && m.user2.id === user.id) || (m.user1.id === user.id && m.user2.id === authUser?.id)
+            );
+            
+            if (existingMatch) {
+              // If match exists, show regular message button that goes directly to chat
+              return (
+                <button onClick={handleMessage} className={`flex-1 py-3 rounded-full font-semibold border-2 ${
+                  isVipProfile
+                    ? 'border-amber-400 text-amber-300 hover:bg-amber-500 hover:text-black'
+                    : isProProfile
+                      ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-500 hover:text-white'
+                      : 'border-rose-700 text-rose-400 hover:bg-rose-700 hover:text-white'
+                }`}>{t('profile.message')}</button>
+              );
+            }
+            
+            // Show different button states based on message request status
+            if (messageRequestStatus === 'accepted') {
+              return (
+                <button onClick={handleSendMessageRequestProfile} className={`flex-1 py-3 rounded-full font-semibold border-2 bg-green-600/20 border-green-400 text-green-300 hover:bg-green-600 hover:text-white`}>
+                  {t('profile.messageNow')}
+                </button>
+              );
+            } else if (messageRequestStatus === 'pending') {
+              return (
+                <button disabled className={`flex-1 py-3 rounded-full font-semibold border-2 opacity-50 cursor-not-allowed ${
+                  isVipProfile
+                    ? 'border-amber-400 text-amber-300'
+                    : isProProfile
+                      ? 'border-cyan-400 text-cyan-300'
+                      : 'border-rose-700 text-rose-400'
+                }`}>
+                  {t('profile.requestSent')}
+                </button>
+              );
+            } else {
+              return (
+                <button onClick={handleSendMessageRequestProfile} className={`flex-1 py-3 rounded-full font-semibold border-2 ${
+                  isVipProfile
+                    ? 'border-amber-400 text-amber-300 hover:bg-amber-500 hover:text-black'
+                    : isProProfile
+                      ? 'border-cyan-400 text-cyan-300 hover:bg-cyan-500 hover:text-white'
+                      : 'border-rose-700 text-rose-400 hover:bg-rose-700 hover:text-white'
+                }`}>{t('profile.message')}</button>
+              );
+            }
           })()}
         </div>
       </div>
@@ -616,7 +775,7 @@ const UserProfilePage: React.FC = () => {
               className="bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] rounded-2xl p-6 mx-4 max-w-sm w-full border border-pink-500/30 shadow-2xl relative"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className={`absolute inset-0 rounded-2xl blur-xl ${isVipProfile ? 'bg-gradient-to-r from-amber-400/10 to-yellow-500/10' : isProProfile ? 'bg-gradient-to-r from-cyan-400/10 to-blue-500/10' : 'bg-gradient-to-r from-pink-500/10 to-purple-500/10'}`}></div>
+              <div className="absolute inset-0 rounded-2xl blur-xl bg-white/5"></div>
               <h3 className="text-lg font-semibold mb-2 text-white relative z-10">{t('chat.block.title')}</h3>
               <p className="text-gray-300 mb-4 relative z-10">{t('chat.block.body', { name: (user as any)?.name || '' })}</p>
               <div className="flex gap-3 justify-end relative z-10">
@@ -637,6 +796,14 @@ const UserProfilePage: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showMessageRequestModal && user && (
+        <MessageRequestModal
+          receiverName={(user as any).name}
+          onSend={handleSendProfileRequest}
+          onClose={() => setShowMessageRequestModal(false)}
+        />
+      )}
     </div>
   );
 };

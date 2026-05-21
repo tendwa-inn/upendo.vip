@@ -58,33 +58,26 @@ supabase.from = (table: string) => {
   return query;
 };
 
-// Add error handling for network issues
-supabase.auth.onAuthStateChange((event, session) => {
-  console.log('Auth state changed:', event, session?.user?.id);
-});
+// Auth state change handler (silent)
 
-// Add WebSocket error handling to prevent connection spam
+// Channel subscription wrapper - always propagate status to callback
 const originalChannel = supabase.channel;
 supabase.channel = (name: string) => {
   const channel = originalChannel.call(supabase, name);
-  
-  // Add error handling to the channel
+
   const originalSubscribe = channel.subscribe.bind(channel);
   channel.subscribe = (callback?: (status: string, err?: Error) => void) => {
     const wrappedCallback = (status: string, err?: Error) => {
       if (err) {
-        if (err.message?.includes('WebSocket') || err.message?.includes('connection')) {
-          console.warn(`WebSocket connection issue for channel ${name}:`, err.message);
-          // Don't propagate WebSocket errors to prevent spam
-          return;
-        }
+        console.error(`Realtime channel [${name}] error:`, err.message);
       }
+      // Always call the callback so stores get SUBSCRIBED/CHANNEL_ERROR/TIMED_OUT status
       if (callback) callback(status, err);
     };
-    
+
     return originalSubscribe(wrappedCallback);
   };
-  
+
   return channel;
 };
 

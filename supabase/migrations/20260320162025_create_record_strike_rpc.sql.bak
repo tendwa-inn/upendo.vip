@@ -16,7 +16,7 @@ BEGIN
 
     -- Create and send notification
     notification_message := 'You have received a strike for using inappropriate language ("' || p_word || '"). You now have ' || new_strikes || ' strike(s).';
-    INSERT INTO public.notifications (user_id, type, message) VALUES (p_user_id, 'system', notification_message);
+    INSERT INTO public.notifications (user_id, type, message) VALUES (p_user_id, 'account-issue', notification_message);
 
     -- Check for automatic ban
     IF new_strikes >= 3 THEN

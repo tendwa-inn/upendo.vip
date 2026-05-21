@@ -1,32 +1,41 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 import { useSwipeStore } from '../stores/swipeStore';
 import { useMatchStore } from '../stores/matchStore.tsx';
 
 import { useDiscoveryStore } from '../stores/discoveryStore';
 import { useAuthStore } from '../stores/authStore';
 import { useUiStore } from '../stores/uiStore';
+import { DELUXE_BUTTONS } from '../config/deluxeButtons';
 import { useNotificationStore } from '../stores/notificationStore';
 import { useLikesStore } from '../stores/likesStore';
 import { useViewsStore } from '../stores/viewsStore';
 import usePresenceStore from '../stores/presenceStore';
 import SwipeCard from '../components/swipe/SwipeCard';
+import AdCard from '../components/swipe/AdCard';
+import EngagementAdModal from '../components/modals/EngagementAdModal';
 import UserListItem from '../components/UserListItem';
+import { adService, Ad } from '../services/adService';
 import FilterModal from '../components/modals/FilterModal';
-import { SlidersHorizontal, Bell, Eye, Heart, Loader2, Ghost } from 'lucide-react';
+import { SlidersHorizontal, Bell, Eye, Heart, Loader2, Ghost, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { recalcVisibilityForCurrentUser } from '../services/visibilityService';
+import { useCurrentTheme } from '../stores/colorThemeStore';
 import PhotoWall from '../components/PhotoWall';
 import ProfileCompletionWall from '../components/ProfileCompletionWall';
 import MatchAnimation from '../components/modals/MatchAnimation';
 import { useMatchAnimationStore } from '../stores/matchAnimationStore';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import PullToRefreshIndicator from '../components/PullToRefreshIndicator';
 
 const FindPage: React.FC = () => {
   const { swipeRight, swipeLeft, loadSwipeState, rewind } = useSwipeStore();
   const { potentialMatches, fetchPotentialMatches, isFetching } = useDiscoveryStore();
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [swipeHistory, setSwipeHistory] = useState<string[]>([]);
+  const previousCardIndexRef = useRef(0);
   const { user: currentUser, profile } = useAuthStore();
   const { unreadCount, fetchNotifications } = useNotificationStore();
   const { createMatch, matches } = useMatchStore();
@@ -43,6 +52,42 @@ const FindPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'discover' | 'views' | 'likes'>('discover');
   const { isMatchAnimationVisible, matchedUser, hideMatchAnimation } = useMatchAnimationStore();
   const { t } = useTranslation();
+
+  // Ad system state
+  const [swipeAds, setSwipeAds] = useState<Ad[]>([]);
+  const [engagementAds, setEngagementAds] = useState<Ad[]>([]);
+  const [showEngagementModal, setShowEngagementModal] = useState(false);
+  const [selectedEngagementAd, setSelectedEngagementAd] = useState<Ad | null>(null);
+  const [bonusSwipes, setBonusSwipes] = useState(0);
+  const acct = (profile as any)?.account_type || (profile as any)?.subscription || 'free';
+  const isFreeUser = acct === 'free';
+
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    try {
+      // Refresh potential matches
+      await fetchPotentialMatches();
+      
+      // Refresh notifications
+      await fetchNotifications();
+      
+      // Refresh likes and views
+      await Promise.all([
+        fetchUsersWhoLikedMe(),
+        fetchUsersWhoViewedMe(),
+      ]);
+      
+      toast.success(t('toast.contentRefreshed'));
+    } catch (error) {
+      console.error('Refresh failed:', error);
+      toast.error(t('toast.contentRefreshFailed'));
+    }
+  };
+
+  const { pullState, getPullStyles, getRefreshIndicatorProps, containerRef } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    disabled: activeTab !== 'discover',
+  });
 
   // Random mode toggle (persisted)
   const [swipeMode, setSwipeMode] = useState<'smart' | 'random'>(() => {
@@ -85,212 +130,172 @@ const FindPage: React.FC = () => {
     return a;
   };
 
-  const orderedPotentialMatches = useMemo(() => {
-    const uid = currentUser?.id || 'guest';
-    const today = new Date().toISOString().slice(0, 10);
-    const normalizeGender = (g?: string) => {
-      if (!g) return null;
-      const s = String(g).toLowerCase();
-      if (['male','man','m'].includes(s)) return 'male';
-      if (['female','woman','f'].includes(s)) return 'female';
-      return null;
-    };
-    const myGender = normalizeGender((useAuthStore.getState().profile as any)?.gender);
-    const wantGender = myGender === 'female' ? 'male' : (myGender === 'male' ? 'female' : null);
-    const getCountry = (locName?: string | null) => {
-      if (!locName) return null;
-      const parts = String(locName).split(',').map(p => p.trim()).filter(Boolean);
-      return parts.length ? parts[parts.length - 1] : null;
-    };
-    const meCountry = getCountry((useAuthStore.getState().profile as any)?.location?.name || (useAuthStore.getState().profile as any)?.location_name);
-    const tier = ((useAuthStore.getState().profile as any)?.account_type || (useAuthStore.getState().profile as any)?.subscription || 'free') as 'free' | 'pro' | 'vip';
-    const chosenScope = (localStorage.getItem('locationScope') || 'nearby') as 'nearby'|'country'|'global';
-    const tierMax: 'nearby'|'country'|'global' = tier === 'vip' ? 'global' : (tier === 'pro' ? 'country' : 'nearby');
-    const effectiveScope: 'nearby'|'country'|'global' = tierMax === 'nearby' ? 'nearby' : (tierMax === 'country' ? (chosenScope === 'nearby' ? 'nearby' : 'country') : chosenScope);
-    const inTierGeo = (p: any) => {
-      const meters = p.distance_meters ?? p.distance ?? null;
-      const country = getCountry(p.location_name || p.location?.name);
-      if (effectiveScope === 'nearby') return meters === null || meters <= 100_000;
-      if (effectiveScope === 'country') return !meCountry || !country ? true : meCountry === country;
-      return true;
-    };
-    const calcAge = (dob?: string | Date | null) => {
-      if (!dob) return null;
-      const birthDate = new Date(dob as any);
-      if (Number.isNaN(birthDate.getTime())) return null;
-      const now = new Date();
-      let a = now.getFullYear() - birthDate.getFullYear();
-      const m = now.getMonth() - birthDate.getMonth();
-      if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) a--;
-      return a;
-    };
-    const self: any = useAuthStore.getState().profile || {};
-    const ageRange: [number, number] | undefined = (typeof (filters as any)?.ageRange?.[0] === 'number' && typeof (filters as any)?.ageRange?.[1] === 'number')
-      ? (filters as any).ageRange
-      : undefined;
-    const selectedVibe: string | undefined = undefined; // deck doesn’t expose vibe; leave neutral
-    const completeness = (p: any) => {
-      const hasBio = !!p.bio;
-      const hasHere = Array.isArray(p.hereFor) && p.hereFor.length > 0;
-      const hasPhotos = Array.isArray(p.photos) && p.photos.length > 0;
-      return (hasBio ? 1 : 0) + (hasHere ? 1 : 0) + (hasPhotos ? 1 : 0);
-    };
-    const baseVisibilityByTier = (p: any) => {
-      const t = (p.accountType || p.account_type || p.subscription) as string | undefined;
-      if (t === 'vip') return 0.8;
-      if (t === 'pro') return 0.65;
-      return 0.5;
-    };
-    const likedMeIds = new Set((useLikesStore.getState().usersWhoLikedMe || []).map(u => u.id));
-    const recencyBoost = (last: any) => {
-      if (!last) return 0;
-      const now = Date.now();
-      const ts = new Date(last).getTime();
-      if (!Number.isFinite(ts)) return 0;
-      const hours = Math.max(0, (now - ts) / 36e5);
-      if (hours <= 1) return 0.2;
-      if (hours <= 6) return 0.12;
-      if (hours <= 24) return 0.05;
-      return 0;
-    };
-    const overlapCount = (a: string[] = [], b: string[] = []) => a.filter(x => b.includes(x)).length;
-    const scoreFor = (p: any) => {
-      // Filters and hard constraints
-      const theirGender = normalizeGender(p.gender);
-      if (wantGender && theirGender !== wantGender) return -Infinity;
-      if (!inTierGeo(p)) return -Infinity;
-      const age = p.age ?? calcAge(p.date_of_birth || p.dob || p.dateOfBirth || p.birthdate);
-      if (ageRange && typeof age === 'number' && (age < ageRange[0] || age > ageRange[1])) return -Infinity;
-      // Components
-      const distM = p.distance_meters ?? p.distance ?? null;
-      const distKm = typeof distM === 'number' ? Math.ceil(Math.max(1, distM / 1000)) : null;
-      const distScore = distKm === null ? 0 : Math.max(0, 1 - Math.min(distKm, 500) / 500); // closer -> higher
-      const hereSelf: string[] = self?.hereFor || [];
-      const hereOther: string[] = p?.hereFor || [];
-      const intentionsMatch = overlapCount(hereSelf, hereOther) > 0 ? 1 : 0;
-      // Free users: allow randomization across intentions a bit
-      const intentionWeight = tier === 'free' ? (intentionsMatch ? 0.6 : 0.2) : (intentionsMatch ? 0.9 : 0.1);
-      const interestsSelf: string[] = self?.interests || [];
-      const interestsOther: string[] = p?.interests || [];
-      const mutualInterests = overlapCount(interestsSelf, interestsOther);
-      const kidsMatch = self?.kids && p?.kids && self.kids === p.kids ? 1 : 0;
-      const drinkMatch = self?.drinking && p?.drinking && self.drinking === p.drinking ? 1 : 0;
-      const smokeMatch = self?.smoking && p?.smoking && self.smoking === p.smoking ? 1 : 0;
-      const religionMatch = self?.religion && p?.religion && self.religion === p.religion ? 1 : 0;
-      const loveLangMatch = self?.loveLanguage && p?.loveLanguage && self.loveLanguage === p.loveLanguage ? 1 : 0;
-      const visMod = typeof p.visibility_modifier === 'number' && isFinite(p.visibility_modifier) ? p.visibility_modifier : 1.0;
-      const visibility = (baseVisibilityByTier(p) * visMod) + (completeness(p) * 0.05) + recencyBoost(p.lastActive);
-      const likedMeBoost = likedMeIds.has(p.id) ? 0.8 : 0; // strong priority for people who liked me
-      const onlineBoost = onlineUsers && (onlineUsers as any)[p.id] ? 0.15 : 0;
-      // Daily vibes alignment (if present on either side, small nudge)
-      const vibeSelf = (self as any).dailyVibe;
-      const vibeOther = (p as any).dailyVibe;
-      const vibeBoost = vibeSelf && vibeOther && vibeSelf === vibeOther ? 0.1 : 0;
-      // Compose score
-      const score =
-        visibility * 2.0 +
-        distScore * 1.2 +
-        intentionWeight * 1.4 +
-        Math.min(mutualInterests, 4) * 0.3 +
-        (kidsMatch * 0.25 + drinkMatch * 0.2 + smokeMatch * 0.2) +
-        (religionMatch * 0.15 + loveLangMatch * 0.15) +
-        vibeBoost +
-        likedMeBoost +
-        onlineBoost;
-      // Small deterministic jitter to avoid ties
-      const rnd = makeRng(`${uid}-${today}-${p.id}`)();
-      return score + rnd * 0.05;
-    };
-    const filtered = potentialMatches.filter((p: any) => {
-      const theirGender = normalizeGender(p.gender);
-      if (wantGender && theirGender !== wantGender) return false;
-      if (!inTierGeo(p)) return false;
-      const age = p.age ?? calcAge(p.date_of_birth || p.dob || p.dateOfBirth || p.birthdate);
-      if (ageRange && typeof age === 'number' && (age < ageRange[0] || age > ageRange[1])) return false;
-      return true;
-    });
-    if (swipeMode === 'random') {
-      return seededShuffle(filtered, `${uid}-${today}`);
+  // Age calculation utility
+  const calcAge = (dob: string): number => {
+    const birthDate = new Date(dob);
+    const now = new Date();
+    let a = now.getFullYear() - birthDate.getFullYear();
+    const m = now.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) {
+      a--;
     }
-    return filtered
-      .map(p => ({ p, s: scoreFor(p) }))
-      .sort((a, b) => b.s - a.s)
-      .map(x => x.p);
-  }, [potentialMatches, swipeMode, currentUser?.id]);
+    return a;
+  };
+
+
 
 
 
   useEffect(() => {
-    // The fetchInitialData is now called from the authStore
+    if (!currentUser) return;
+
+    // Load swipe state
+    loadSwipeState();
+
+    // Fetch initial data
+    Promise.all([
+      fetchPotentialMatches(),
+      fetchUsersWhoLikedMe(),
+      fetchUsersWhoViewedMe(),
+      fetchNotifications()
+    ]).then(() => {
+      setIsLoading(false);
+    }).catch(() => {
+      setIsLoading(false);
+    });
+  }, [currentUser, fetchPotentialMatches, fetchUsersWhoLikedMe, fetchUsersWhoViewedMe, fetchNotifications]);
+
+  // Load ads and bonus swipes
+  useEffect(() => {
+    if (!currentUser) return;
+    const loadAds = async () => {
+      try {
+        const [swipe, engagement, bonus] = await Promise.all([
+          adService.getActiveSwipeAds(),
+          adService.getActiveEngagementAds(),
+          adService.getTotalBonusSwipes(currentUser.id),
+        ]);
+        setSwipeAds(swipe);
+        setEngagementAds(engagement);
+        setBonusSwipes(bonus);
+      } catch (err) {
+        console.error('Failed to load ads:', err);
+      }
+    };
+    loadAds();
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    if (activeTab === 'likes') {
+      fetchUsersWhoLikedMe();
+    }
+
+    if (activeTab === 'discover') {
+      fetchPotentialMatches();
+    }
+  }, [activeTab, currentUser]);
+
+  // Auto-refill: fetch more profiles when running low, reset index when exhausted
+  useEffect(() => {
+    if (isFetching || potentialMatches.length === 0) return;
+
+    if (currentCardIndex >= potentialMatches.length - 3) {
+      fetchPotentialMatches();
+    }
+
+    if (currentCardIndex >= potentialMatches.length) {
+      setCurrentCardIndex(0);
+      setSwipeHistory([]);
+    }
+  }, [currentCardIndex, potentialMatches.length, isFetching, fetchPotentialMatches]);
+
+  // Augmented deck: interleave ads every N swipes (no cap — ads repeat throughout)
+  const augmentedDeck = useMemo(() => {
+    if (swipeAds.length === 0) return potentialMatches.map(u => ({ type: 'user' as const, data: u }));
+    const deck: { type: 'user' | 'ad'; data: any }[] = [];
+    let userCount = 0;
+    let adIndex = 0;
+    const freq = swipeAds[0]?.frequency || 5;
+    for (const user of potentialMatches) {
+      deck.push({ type: 'user', data: user });
+      userCount++;
+      if (userCount % freq === 0) {
+        deck.push({ type: 'ad', data: swipeAds[adIndex % swipeAds.length] });
+        adIndex++;
+      }
+    }
+    return deck;
+  }, [potentialMatches, swipeAds]);
+
+  const handleAdDismiss = React.useCallback(() => {
+    setCurrentCardIndex(prev => prev + 1);
   }, []);
 
-  // Reset deck position if list length or mode changes
-  useEffect(() => {
-    setCurrentCardIndex(0);
-  }, [potentialMatches.length, swipeMode]);
+  const handleWatchAd = React.useCallback((ad: Ad) => {
+    setSelectedEngagementAd(ad);
+    setShowEngagementModal(true);
+  }, []);
+
+  const handleEngagementComplete = React.useCallback(async () => {
+    if (!currentUser || !selectedEngagementAd) return;
+    try {
+      await adService.recordCompletion(currentUser.id, selectedEngagementAd.id);
+      await adService.grantRewardSwipes(currentUser.id, selectedEngagementAd.id, selectedEngagementAd.reward_swipes);
+      const newTotal = await adService.getTotalBonusSwipes(currentUser.id);
+      setBonusSwipes(newTotal);
+      toast.success(`You earned ${selectedEngagementAd.reward_swipes} free swipes!`);
+    } catch (err) {
+      toast.error(t('toast.completionFailed'));
+    }
+    setShowEngagementModal(false);
+    setSelectedEngagementAd(null);
+  }, [currentUser, selectedEngagementAd]);
+
 
   const handleSwipeRight = React.useCallback(async (userId: string) => {
-    console.log('=== FINDPAGE HANDLE SWIPE RIGHT CALLED ===');
-    console.log('UserId:', userId);
-    console.log('Current potential matches:', potentialMatches.map(u => ({id: u.id, name: u.name})));
-    
     const swipedUser = potentialMatches.find((u) => u.id === userId);
-    console.log('Found swiped user:', swipedUser);
-    
-    if (!swipedUser) {
-      console.log('ERROR: Swiped user not found in potential matches!');
+    if (!swipedUser) return;
+
+    // Check if free user has swipes left (including bonus)
+    const { swipeCount } = useSwipeStore.getState();
+    const LIMITS = { free: 35, pro: 150, vip: 300 };
+    const limit = LIMITS[acct as keyof typeof LIMITS] || LIMITS.free;
+    if (isFreeUser && swipeCount >= limit && bonusSwipes <= 0) {
+      // Show engagement ads if available
+      if (engagementAds.length > 0) {
+        const available = engagementAds[0];
+        handleWatchAd(available);
+      } else {
+        toast.error(t('toast.noMoreSwipes'));
+      }
       return;
     }
 
-    console.log('Calling swipeRight with userId:', userId);
-    const { matched } = await swipeRight(userId);
-    console.log('Swipe result - matched:', matched);
-    
+    // Use bonus swipe if over limit
+    if (isFreeUser && swipeCount >= limit && bonusSwipes > 0) {
+      const used = await adService.useBonusSwipe(currentUser!.id);
+      if (used) setBonusSwipes(prev => Math.max(0, prev - 1));
+    }
+
+    const { matched, matchId } = await swipeRight(userId);
+
     if (matched) {
-      console.log('IT\'S A MATCH! Showing animation');
-      useMatchAnimationStore.getState().showMatchAnimation(swipedUser);
+      if (matchId) {
+        useMatchAnimationStore.getState().showMatchAnimation(swipedUser, matchId);
+      }
     }
-    
-    console.log('Adding user to swipe history:', userId);
+
     setSwipeHistory(prev => [...prev, userId]);
-    
-    console.log('Advancing card index...');
-    setCurrentCardIndex(prev => {
-      const newIndex = prev + 1;
-      console.log('Advanced from', prev, 'to', newIndex);
-      return newIndex;
-    });
-    
-    // Fetch more profiles if running low
-    if (currentCardIndex >= potentialMatches.length - 3) {
-      console.log('Running low on profiles, fetching more...');
-      fetchPotentialMatches();
-    }
-  }, [potentialMatches, swipeRight, currentCardIndex, fetchPotentialMatches]);
+    setCurrentCardIndex(prev => prev + 1);
+  }, [potentialMatches, swipeRight, currentCardIndex, swipeHistory, acct, isFreeUser, bonusSwipes, engagementAds, handleWatchAd, currentUser]);
 
   const handleSwipeLeft = React.useCallback((userId: string) => {
-    console.log('=== FINDPAGE HANDLE SWIPE LEFT CALLED ===');
-    console.log('UserId:', userId);
-    
-    console.log('Calling swipeLeft with userId:', userId);
     swipeLeft(userId);
-    
-    console.log('Adding user to swipe history:', userId);
     setSwipeHistory(prev => [...prev, userId]);
-    
-    console.log('Advancing card index...');
-    setCurrentCardIndex(prev => {
-      const newIndex = prev + 1;
-      console.log('Advanced from', prev, 'to', newIndex);
-      return newIndex;
-    });
-    
-    // Fetch more profiles if running low
-    if (currentCardIndex >= potentialMatches.length - 3) {
-      console.log('Running low on profiles, fetching more...');
-      fetchPotentialMatches();
-    }
-  }, [swipeLeft, currentCardIndex, potentialMatches.length, fetchPotentialMatches]);
+    setCurrentCardIndex(prev => prev + 1);
+  }, [swipeLeft, currentCardIndex, potentialMatches.length, swipeHistory]);
 
   const handleRewind = React.useCallback(async () => {
     const success = await rewind();
@@ -300,23 +305,16 @@ const FindPage: React.FC = () => {
         setSwipeHistory(prev => prev.slice(0, -1));
       }
     } else {
-      toast.error('You are out of rewinds for today!');
+      toast.error(t('toast.noMoreRewinds'));
     }
   }, [rewind, currentCardIndex]);
-
-  // Auto-refresh when running out of profiles
-  useEffect(() => {
-    if (currentCardIndex >= potentialMatches.length - 1 && potentialMatches.length > 0 && !isLoading) {
-      console.log('Running low on profiles, fetching more...');
-      fetchPotentialMatches();
-    }
-  }, [currentCardIndex, potentialMatches.length, isLoading, fetchPotentialMatches]);
 
   const handleApplyFilters = React.useCallback((newFilters: any) => setFilters(newFilters), []);
 
   const handleLikeBack = React.useCallback(async (userId: string) => {
     await createMatch(userId);
     await removeLike(userId);
+    useDiscoveryStore.getState().removePotentialMatch(userId);
   }, [createMatch, removeLike]);
 
   const getMissingFields = React.useCallback(() => {
@@ -327,37 +325,27 @@ const FindPage: React.FC = () => {
     return missing;
   }, [profile]);
 
-  const acct = (profile as any)?.account_type || (profile as any)?.accountType || (profile as any)?.subscription;
-  const isVip = acct === 'vip';
-  const isPro = acct === 'pro';
-  
-  // Debug logging
-  console.log('DEBUG - FindPage account detection:');
-  console.log('acct value:', acct);
-  console.log('profile object:', profile);
-  console.log('isVip:', isVip);
-  console.log('isPro:', isPro);
+  const theme = useCurrentTheme(acct || 'free');
 
   const headerBg = activeTab !== 'discover'
-    ? isVip ? 'bg-black' : isPro ? 'bg-[#071521]' : 'bg-[#22090E]'
+    ? theme.stickyHeader
     : 'bg-transparent';
 
   if (isLoading) {
     return (
-      <div className={`fixed inset-0 overflow-hidden text-white ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'} flex flex-col items-center justify-center`}>
-        {isVip ? (
-          <Ghost className="w-14 h-14 text-amber-300 animate-spin mb-4 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]" />
-        ) : isPro ? (
-          <Ghost className="w-14 h-14 text-sky-300 animate-spin mb-4 drop-shadow-[0_0_12px_rgba(125,211,252,0.9)]" />
-        ) : (
-          <Ghost className="w-14 h-14 text-pink-500 animate-spin mb-4 drop-shadow-[0_0_12px_rgba(236,72,153,0.9)]" />
-        )}
+      <div className={`fixed inset-0 overflow-hidden text-white ${theme.background} flex flex-col items-center justify-center`}>
+        <div className={`animate-spin mb-4 ${theme.accent.loading}`}>
+          <Ghost className="w-14 h-14" />
+        </div>
         <p className="text-white/70 text-sm">{t('findingMatches') || 'Finding matches...'}</p>
       </div>
     );
   }
 
-  // const missingFields = getMissingFields();
+  // Check profile completeness
+  const missingFields = getMissingFields();
+  
+  // Temporarily bypass profile completion wall for debugging
   // if (missingFields.length > 0) {
   //   return <ProfileCompletionWall missingFields={missingFields} />;
   // }
@@ -366,17 +354,28 @@ const FindPage: React.FC = () => {
 
 
 
-  const currentMatch = orderedPotentialMatches[currentCardIndex];
-  
-  // Debug: Log current state
-  console.log('=== FINDPAGE RENDER ===');
-  console.log('Current card index:', currentCardIndex);
-  console.log('Swipe history length:', swipeHistory.length);
-  console.log('Potential matches length:', potentialMatches.length);
-  console.log('Current match:', currentMatch?.name, currentMatch?.id);
+  const currentDeckItem = swipeAds.length > 0 && augmentedDeck.length > 0
+    ? augmentedDeck[Math.min(currentCardIndex, augmentedDeck.length - 1)]
+    : null;
+  const isCurrentAd = currentDeckItem?.type === 'ad';
+
+  // For photo progress bar: only show for user cards (not ads)
+  // When using augmented deck, find the user from the deck item data
+  const currentMatch = !isCurrentAd && currentDeckItem?.type === 'user'
+    ? currentDeckItem.data
+    : !isCurrentAd && potentialMatches.length > 0
+      ? potentialMatches[Math.min(currentCardIndex, potentialMatches.length - 1)]
+      : null;
 
   return (
     <div className="fixed inset-0 overflow-hidden overscroll-none text-white">
+      {/* Pull to Refresh Indicator */}
+      <PullToRefreshIndicator 
+        pullDistance={pullState.pullDistance}
+        isRefreshing={pullState.isRefreshing}
+        threshold={80}
+      />
+      
       {isMatchAnimationVisible && matchedUser && (
         <MatchAnimation matchedUser={matchedUser} onClose={hideMatchAnimation} />
       )}
@@ -385,15 +384,13 @@ const FindPage: React.FC = () => {
       <div className={`absolute top-0 left-0 right-0 z-20 ${headerBg}`}>
         <div className="w-full max-w-md mx-auto flex items-center p-4 pt-safe-top">
           <button onClick={() => setIsFilterModalOpen(true)} className="p-2"><SlidersHorizontal className="w-6 h-6" /></button>
-          <h1 className="text-2xl font-bold flex-1 text-center">{t('findTitle')}</h1>
+          <h1 className="text-xl font-bold flex-1 text-center">{t('findTitle')}</h1>
           <Link to="/notifications" className="p-2 relative">
             <Bell className="w-6 h-6" />
             {unreadCount > 0 && (
-              <div className={`absolute top-1 right-1 w-4 h-4 rounded-full text-xs flex items-center justify-center ${
-                isVip ? 'bg-amber-400 text-black' : isPro ? 'bg-[#ff7f50] text-black' : 'bg-pink-500'
-              }`}>
-                {unreadCount}
-              </div>
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full text-[10px] font-bold flex items-center justify-center px-1 bg-red-500 text-white z-10">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
             )}
           </Link>
         </div>
@@ -406,8 +403,8 @@ const FindPage: React.FC = () => {
             <button
               onClick={() => { setActiveTab('views'); markViewsAsViewed(); }}
               className={`relative text-sm font-medium transition-all flex items-center gap-1 ${
-                activeTab === 'views' 
-                  ? `${isVip ? 'text-amber-400 border-amber-400' : isPro ? 'text-cyan-400 border-cyan-400' : 'text-pink-400 border-pink-400'} border-b-2 pb-1` 
+                activeTab === 'views'
+                  ? `${theme.primary} border-b-2 border-current pb-1`
                   : 'text-white/70 hover:text-white'
               }`}>
               {t('views')}
@@ -418,15 +415,15 @@ const FindPage: React.FC = () => {
             <button
               onClick={() => setActiveTab('discover')}
               className={`text-sm font-medium transition-all ${
-                activeTab === 'discover' 
-                  ? `${isVip ? 'text-amber-400 border-amber-400' : isPro ? 'text-cyan-400 border-cyan-400' : 'text-pink-400 border-pink-400'} border-b-2 pb-1` 
+                activeTab === 'discover'
+                  ? `${theme.primary} border-b-2 border-current pb-1`
                   : 'text-white/70 hover:text-white'
               }`}>{t('swipes')}</button>
             <button
               onClick={() => { setActiveTab('likes'); markLikesAsViewed(); }}
               className={`relative text-sm font-medium transition-all flex items-center gap-1 ${
-                activeTab === 'likes' 
-                  ? `${isVip ? 'text-amber-400 border-amber-400' : isPro ? 'text-cyan-400 border-cyan-400' : 'text-pink-400 border-pink-400'} border-b-2 pb-1` 
+                activeTab === 'likes'
+                  ? `${theme.primary} border-b-2 border-current pb-1`
                   : 'text-white/70 hover:text-white'
               }`}>
               {t('likes')}
@@ -439,80 +436,159 @@ const FindPage: React.FC = () => {
       </div>
 
       {/* Tab Content */}
-      <div className="absolute top-0 left-0 right-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] overflow-hidden pt-safe-top">
         {activeTab === 'discover' && (
-          <div className="h-full relative">
+          <div ref={containerRef} className="h-full relative pull-refresh-container" style={getPullStyles()}>
             {/* Photo Progress */}
-            {currentMatch && (
-              <div className="absolute bottom-2 left-4 right-4 z-20 flex space-x-1">
-                {currentMatch.photos.map((_, index) => (
-                  <div key={index} className="h-1.5 flex-1 rounded-full bg-white/30 backdrop-blur-sm">
-                    <motion.div
-                      className={`h-full rounded-full ${buttonStyle === 'white-clean' ? 'bg-white' : 'bg-yellow-500'}`}
-                      initial={{ width: '0%' }}
-                      animate={{ width: index === currentPhotoIndex ? '100%' : '0%' }}
-                      transition={{ duration: 0.2, ease: 'linear' }}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
+            {currentMatch && !isCurrentAd && (() => {
+              const seekColors: Record<string, string> = {
+                'white-clean': 'bg-white',
+                'upendo-color': 'bg-yellow-500',
+                'vintage': 'bg-white',
+                'upendo-205': 'bg-yellow-500',
+                'neon-cyber': 'bg-fuchsia-400',
+                'neon-violet': 'bg-purple-400',
+                'neon-ice': 'bg-cyan-400',
+                'neon-solar': 'bg-amber-400',
+                'neon-midnight': 'bg-violet-400',
+                'neon-tangerine': 'bg-orange-400',
+                'neon-flamingo': 'bg-pink-400',
+                'neon-lime': 'bg-lime-400',
+                'classic-glass': 'bg-white/60',
+                'classic-chrome': 'bg-gray-300',
+                'classic-copper': 'bg-amber-500',
+                'classic-mono': 'bg-white',
+                'classic-slate': 'bg-slate-400',
+                'classic-gold': 'bg-amber-400',
+                'glowy-aurora': 'bg-emerald-400',
+                'glowy-ember': 'bg-red-400',
+                'glowy-ocean': 'bg-cyan-400',
+                'glowy-rose': 'bg-rose-400',
+                'pop-bubble': 'bg-pink-400',
+                'pop-confetti': 'bg-emerald-400',
+              };
+
+              // Deluxe styles use config-driven seek bar
+              const isDeluxe = buttonStyle.startsWith('deluxe-');
+              let seekColor = seekColors[buttonStyle] || 'bg-yellow-500';
+              let seekHeight = 'h-1.5';
+              let seekRounded = 'rounded-full';
+              let seekGlow = '';
+              let seekTrackColor = 'bg-white/30';
+
+              if (isDeluxe) {
+                const deluxe = DELUXE_BUTTONS[buttonStyle];
+                if (deluxe?.seek) {
+                  seekColor = deluxe.seek.color;
+                  seekHeight = deluxe.seek.height || 'h-1';
+                  seekRounded = deluxe.seek.rounded || 'rounded-full';
+                  seekGlow = deluxe.seek.glow || '';
+                  seekTrackColor = deluxe.seek.trackColor || 'bg-white/20';
+                }
+              }
+
+              return (
+                <div className="absolute bottom-2 left-4 right-4 z-20 flex space-x-1">
+                  {currentMatch.photos.map((_, index) => (
+                    <div key={index} className={`${seekHeight} flex-1 ${seekRounded} ${seekTrackColor} backdrop-blur-sm`}>
+                      <motion.div
+                        className={`h-full ${seekRounded} ${seekColor} ${seekGlow}`}
+                        initial={{ width: '0%' }}
+                        animate={{ width: index === currentPhotoIndex ? '100%' : '0%' }}
+                        transition={{ duration: 0.2, ease: 'linear' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             <div className="absolute inset-0">
               <AnimatePresence initial={false}>
-                {orderedPotentialMatches.slice(currentCardIndex).map((user, index) => (
-                  <SwipeCard
-                    key={user.id}
-                    user={user}
-                    onSwipeLeft={handleSwipeLeft}
-                    onSwipeRight={handleSwipeRight}
-                    onRewind={handleRewind}
-                    onBoost={() => {}}
-                    canSwipe={true}
-                    isActive={index === 0}
-                    currentPhotoIndex={currentPhotoIndex}
-                    setCurrentPhotoIndex={setCurrentPhotoIndex}
-                    canRewind={currentCardIndex > 0}
-                    currentCardIndex={currentCardIndex}
-                    swipeHistory={swipeHistory}
-                  />
-                ))}
+                {swipeAds.length > 0
+                  ? augmentedDeck.slice(currentCardIndex).map((item, index) =>
+                      item.type === 'ad' ? (
+                        <AdCard
+                          key={`ad-${item.data.id}-${currentCardIndex + index}`}
+                          ad={item.data}
+                          onDismiss={handleAdDismiss}
+                          isActive={index === 0}
+                        />
+                      ) : (
+                        <SwipeCard
+                          key={item.data.id}
+                          user={item.data}
+                          onSwipeLeft={handleSwipeLeft}
+                          onSwipeRight={handleSwipeRight}
+                          onRewind={handleRewind}
+                          onBoost={() => {}}
+                          canSwipe={true}
+                          isActive={index === 0}
+                          currentPhotoIndex={currentPhotoIndex}
+                          setCurrentPhotoIndex={setCurrentPhotoIndex}
+                          canRewind={currentCardIndex > 0}
+                          currentCardIndex={currentCardIndex}
+                          swipeHistory={swipeHistory}
+                        />
+                      )
+                    )
+                  : potentialMatches.slice(currentCardIndex).map((user, index) => (
+                      <SwipeCard
+                        key={user.id}
+                        user={user}
+                        onSwipeLeft={handleSwipeLeft}
+                        onSwipeRight={handleSwipeRight}
+                        onRewind={handleRewind}
+                        onBoost={() => {}}
+                        canSwipe={true}
+                        isActive={index === 0}
+                        currentPhotoIndex={currentPhotoIndex}
+                        setCurrentPhotoIndex={setCurrentPhotoIndex}
+                        canRewind={currentCardIndex > 0}
+                        currentCardIndex={currentCardIndex}
+                        swipeHistory={swipeHistory}
+                      />
+                    ))
+                }
               </AnimatePresence>
 
-              {isFetching && orderedPotentialMatches.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-50">
-                  <div className="neon-spinner"></div>
+              {isFetching && potentialMatches.length === 0 && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 z-50">
+                  <div className={`animate-spin mb-4 ${theme.accent.loading}`}>
+                    <Ghost className="w-14 h-14" />
+                  </div>
+                  <p className="text-white/70 text-sm">{t('findingMatches') || 'Finding matches...'}</p>
                 </div>
               )}
 
-              {orderedPotentialMatches.length === 0 && !isFetching && (
+              {potentialMatches.length === 0 && !isFetching && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
-                  <h2 className="text-2xl font-bold mb-2">{t('noMoreProfiles')}</h2>
+                  <h2 className="text-xl font-bold mb-2">{t('noMoreProfiles')}</h2>
                   <p className="text-gray-300">{t('checkBackLater')}</p>
-                  <button 
-                    onClick={fetchPotentialMatches}
-                    className={`mt-4 px-6 py-2 rounded-full font-medium transition-colors ${
-                      isVip ? 'bg-amber-500 text-black hover:bg-amber-600' : 
-                      isPro ? 'bg-cyan-500 text-black hover:bg-cyan-600' : 
-                      'bg-pink-500 text-white hover:bg-pink-600'
-                    }`}
+                  <button
+                    onClick={() => fetchPotentialMatches()}
+                    className={`mt-4 px-6 py-2 rounded-full font-medium transition-colors ${theme.button.primary} ${theme.button.primaryHover} text-white`}
                   >
                     Load More Profiles
                   </button>
                 </div>
               )}
 
-              {currentCardIndex >= potentialMatches.length && !isLoading && (
-                <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-6 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
-                  <h2 className="text-2xl font-bold mb-2">{t('noMoreProfiles')}</h2>
+              {currentCardIndex >= potentialMatches.length && !isLoading && potentialMatches.length > 0 && (
+                <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-6 ${theme.background}`}>
+                  <h2 className="text-xl font-bold mb-2">{t('noMoreProfiles')}</h2>
                   <p className="text-gray-300">{t('checkBackLater')}</p>
-                  <button 
-                    onClick={fetchPotentialMatches}
-                    className={`mt-4 px-6 py-2 rounded-full font-medium transition-colors ${
-                      isVip ? 'bg-amber-500 text-black hover:bg-amber-600' : 
-                      isPro ? 'bg-cyan-500 text-black hover:bg-cyan-600' : 
-                      'bg-pink-500 text-white hover:bg-pink-600'
-                    }`}
+                  {isFreeUser && engagementAds.length > 0 && (
+                    <button
+                      onClick={() => handleWatchAd(engagementAds[0])}
+                      className="mt-4 px-6 py-3 rounded-full font-bold bg-gradient-to-r from-yellow-500 to-amber-500 text-black hover:from-yellow-600 hover:to-amber-600 transition-all shadow-lg shadow-amber-500/25 flex items-center gap-2"
+                    >
+                      Watch Ad for Free Swipes
+                    </button>
+                  )}
+                  <button
+                    onClick={() => fetchPotentialMatches()}
+                    className={`mt-3 px-6 py-2 rounded-full font-medium transition-colors ${theme.button.primary} ${theme.button.primaryHover} text-white`}
                   >
                     Load More Profiles
                   </button>
@@ -523,10 +599,10 @@ const FindPage: React.FC = () => {
         )}
 
         {activeTab === 'views' && (
-          <div className={`h-full overflow-y-auto p-4 pb-20 mt-16 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
-            <h2 className="text-xl font-bold mb-4">{t('views')}</h2>
+          <div className={`h-full overflow-y-auto p-4 pb-20 mt-16 ${theme.background}`}>
+            <h2 className="text-lg font-bold mb-4">{t('views')}</h2>
             {usersWhoViewedMe.length === 0 ? (
-              <p className="text-center text-gray-400 mt-8">No Views Yet</p>
+              <p className="text-center text-gray-400 mt-8">{t('find.noViewsYet')}</p>
             ) : (
               <div className="space-y-3">
                 {usersWhoViewedMe.map((user) => (
@@ -538,10 +614,10 @@ const FindPage: React.FC = () => {
         )}
 
         {activeTab === 'likes' && (
-          <div className={`h-full overflow-y-auto p-4 pb-20 mt-16 ${isVip ? 'bg-gradient-to-b from-black to-[#0b0b0b]' : isPro ? 'bg-gradient-to-b from-[#071521] to-[#0b2237]' : 'bg-gradient-to-b from-[#22090E] to-[#2E0C13]'}`}>
-            <h2 className="text-xl font-bold mb-4">{t('likes')}</h2>
+          <div className={`h-full overflow-y-auto p-4 pb-20 mt-16 ${theme.background}`}>
+            <h2 className="text-lg font-bold mb-4">{t('likes')}</h2>
             {usersWhoLikedMe.length === 0 ? (
-              <p className="text-center text-gray-400 mt-8">No Likes Yet</p>
+              <p className="text-center text-gray-400 mt-8">{t('find.noLikesYet')}</p>
             ) : (
               <div className="space-y-3">
                 {usersWhoLikedMe.map((user) => (
@@ -559,6 +635,24 @@ const FindPage: React.FC = () => {
       </div>
 
       <FilterModal isOpen={isFilterModalOpen} onClose={() => setIsFilterModalOpen(false)} onApply={handleApplyFilters} />
+
+      {/* Engagement Ad Modal */}
+      {selectedEngagementAd && (
+        <EngagementAdModal
+          isOpen={showEngagementModal}
+          ad={selectedEngagementAd}
+          onClose={() => { setShowEngagementModal(false); setSelectedEngagementAd(null); }}
+          onComplete={handleEngagementComplete}
+        />
+      )}
+
+      {/* Bonus Swipe Indicator */}
+      {isFreeUser && bonusSwipes > 0 && activeTab === 'discover' && (
+        <div className="absolute top-[4.5rem] right-4 z-30 bg-amber-500/20 border border-amber-500/30 rounded-full px-3 py-1 flex items-center gap-1.5">
+          <Zap className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-xs font-bold text-amber-400">{bonusSwipes} bonus</span>
+        </div>
+      )}
     </div>
   );
 };

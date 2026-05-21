@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuthStore } from '../../stores/authStore';
+import { useAppSettingsStore } from '../../stores/appSettingsStore';
+import { getPromoBonuses } from '../../services/promoBonusService';
 import usePresenceStore from '../../stores/presenceStore';
 import { User } from '../../types';
 import { MapPin, MessageSquare, Lock, Heart } from 'lucide-react';
@@ -12,6 +14,8 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 
 import { getTheme } from '../../styles/theme';
+import { useCurrentTheme } from '../../stores/colorThemeStore';
+import MessageRequestModal from '../modals/MessageRequestModal';
 
 const DiscoverGrid: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -21,10 +25,22 @@ const DiscoverGrid: React.FC = () => {
   const { showMatchAnimation } = useMatchAnimationStore.getState();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const { user: currentUser, profile, messageRequestsSent, messageRequestResetDate, incrementMessageRequests, isPro, isVip } = useAuthStore();
+  const { settings, getSettingForTier } = useAppSettingsStore();
   const { t } = useTranslation();
+  const [messageRequestTarget, setMessageRequestTarget] = useState<User | null>(null);
+
+  // Load app settings
+  useEffect(() => {
+    const loadSettings = async () => {
+      if (settings.length === 0) {
+        await useAppSettingsStore.getState().getSettings();
+      }
+    };
+    loadSettings();
+  }, [settings.length]);
 
   const accountType = (profile as any)?.account_type || (profile as any)?.subscription || 'free';
-  const theme = getTheme(accountType);
+  const theme = useCurrentTheme(accountType);
 
   const VIBES = ['Normal', 'Playful', 'Chill', 'Creative', 'Curious', 'Naughty', 'Mellow', 'Energetic', 'Wanna go out', 'Cooking', 'Travelling', 'Inter-racial dating'];
   const FREE_VIBES = ['Normal', 'Playful', 'Chill', 'Creative', 'Curious', 'Mellow'];
@@ -54,29 +70,21 @@ const DiscoverGrid: React.FC = () => {
     if (value && expiresAt && new Date(expiresAt).getTime() > now) return value;
     return assignedVibeForId(u?.id || '');
   };
-  const seededShuffle = <T,>(arr: T[], seedKey: string) => {
+  const randomShuffle = <T,>(arr: T[]) => {
     const a = [...arr];
-    let seed = hashString(`${todaySeed()}|${seedKey}`);
     for (let i = a.length - 1; i > 0; i--) {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      const j = seed % (i + 1);
+      const j = Math.floor(Math.random() * (i + 1));
       [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
   };
 
+
+
   useEffect(() => {
-    // Prefer persisted profile vibe if present and valid
-    const now = Date.now();
-    const persistedValue = (profile as any)?.dailyVibe;
-    const persistedExpires = (profile as any)?.daily_vibe_expires_at;
-    if (persistedValue && persistedExpires && new Date(persistedExpires).getTime() > now) {
-      setSelectedVibe(!isPremium && !FREE_VIBES.includes(persistedValue) ? 'Normal' : persistedValue);
-      return;
-    }
-    // Fallback to localStorage
     const key = 'dailyVibe';
     const raw = localStorage.getItem(key);
+    const now = Date.now();
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
@@ -86,18 +94,50 @@ const DiscoverGrid: React.FC = () => {
           setSelectedVibe(valueToUse);
           return;
         }
+        // Vibe expired — notify user once, then clear the expired entry
+        if (parsed.expiresAt && parsed.expiresAt <= now && currentUser) {
+          const userTier = isVip ? 'vip' : isPro ? 'pro' : 'free';
+          const userSettings = getSettingForTier(userTier);
+          const dailyVibeLimit = userSettings?.daily_vibe_changes || (isPro ? 5 : 1);
+          const usedAllChanges = (parsed.changeCount || 0) >= dailyVibeLimit;
+
+          if (usedAllChanges) {
+            const notifSent = localStorage.getItem('vibeResetNotifSent');
+            const notifDate = notifSent ? new Date(notifSent) : null;
+            const alreadySentToday = notifDate &&
+              new Date(now).getFullYear() === notifDate.getFullYear() &&
+              new Date(now).getMonth() === notifDate.getMonth() &&
+              new Date(now).getDate() === notifDate.getDate();
+
+            if (!alreadySentToday) {
+              localStorage.setItem('vibeResetNotifSent', new Date(now).toISOString());
+              supabase.from('notifications').insert({
+                user_id: currentUser.id,
+                type: 'vibe-refresh',
+                title: 'Daily Vibes Reset',
+                message: 'Your daily vibes have been reset. You can set a new vibe again!',
+              }).then();
+            }
+          }
+          localStorage.removeItem(key);
+        }
       } catch {}
     }
-    // Default
     setSelectedVibe('Normal');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id, isPremium, (profile as any)?.dailyVibe, (profile as any)?.daily_vibe_expires_at]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setVibeForToday = async (v: string) => {
     const key = 'dailyVibe';
     const now = Date.now();
     const raw = localStorage.getItem(key);
-    if (!isPremium && !FREE_VIBES.includes(v)) {
+    
+    // Get the user's tier and corresponding settings
+    const userTier = isVip ? 'vip' : isPremium ? 'pro' : 'free';
+    const userSettings = getSettingForTier(userTier);
+    const dailyVibeLimit = userSettings?.daily_vibe_changes || (isPremium ? 5 : 1);
+    
+    if (!isVip && !isPremium && !FREE_VIBES.includes(v)) {
       toast.error(t('discover.vibes.upgradeToast'));
       return;
     }
@@ -110,13 +150,12 @@ const DiscoverGrid: React.FC = () => {
           changeCount = 0;
           expiresAt = now + DAILY_MS;
         }
-        const limit = isPremium ? 5 : 1;
-        if (changeCount >= limit) {
-          const suffix = limit > 1 ? 's' : '';
-          toast.error(t('discover.vibes.changeLimit', { count: limit, suffix }));
+        if (changeCount >= dailyVibeLimit) {
+          const suffix = dailyVibeLimit > 1 ? 's' : '';
+          toast.error(t('discover.vibes.changeLimit', { count: dailyVibeLimit, suffix }));
           return;
         }
-        if (!isPremium && !FREE_VIBES.includes(parsed.value)) {
+        if (!isVip && !isPremium && !FREE_VIBES.includes(parsed.value)) {
           // Normalize invalid stored value for free users
           parsed.value = 'Normal';
         }
@@ -212,10 +251,20 @@ const DiscoverGrid: React.FC = () => {
     return t('distance.kmAway', { count: km });
   };
 
-  const handleSendMessageRequest = (userId: string) => {
-    // Per-tier message request limits in Discovery
+  const handleSendMessageRequest = (user: User) => {
+    setMessageRequestTarget(user);
+  };
+
+  const handleSendRequestMessage = async (message: string) => {
+    if (!currentUser || !messageRequestTarget) return;
+    const userId = messageRequestTarget.id;
+
+    // Per-tier message request limits from app settings + promo bonuses
     const tier = getAccountTier();
-    const msgLimit = tier === 'vip' ? 15 : tier === 'pro' ? 7 : 3;
+    const tierSettings = getSettingForTier(tier);
+    const baseLimit = tierSettings?.message_requests ?? (tier === 'vip' ? 15 : tier === 'pro' ? 7 : 3);
+    const promoBonuses = await getPromoBonuses(currentUser.id);
+    const msgLimit = promoBonuses.unlimitedMessageRequests ? Infinity : baseLimit + promoBonuses.bonusMessageRequests;
     const key = 'discoveryMsgWindow';
     const now = Date.now();
     const raw = localStorage.getItem(key);
@@ -232,29 +281,36 @@ const DiscoverGrid: React.FC = () => {
     }
     if (count >= msgLimit) {
       toast.error(t('discover.messageRequest.limitReached', { count: msgLimit }));
+      setMessageRequestTarget(null);
       return;
     }
-    console.log(`Sending message request to ${userId}`);
-    incrementMessageRequests();
-    if (!currentUser) return;
-    // Create a pending message request and notify the receiver
-    supabase
-      .from('message_requests')
-      .insert({ sender_id: currentUser.id, receiver_id: userId, status: 'pending' })
-      .then();
-    supabase
-      .from('notifications')
-      .insert({
-        user_id: userId,
-        type: 'message-request',
-        title: 'Message Request',
-        message: 'Someone wants to chat with you',
-        actor_id: currentUser.id,
-      })
-      .then();
-    toast.success(t('toast.messageRequest.sent'));
-    // Record local window count
-    localStorage.setItem(key, JSON.stringify({ windowStart, count: count + 1 }));
+
+    try {
+      await supabase
+        .from('message_requests')
+        .insert({ sender_id: currentUser.id, receiver_id: userId, status: 'pending', message: message || null });
+
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: userId,
+          type: 'message-request',
+          title: 'Message Request',
+          message: message || 'Someone wants to chat with you',
+          actor_id: currentUser.id,
+        });
+
+      incrementMessageRequests();
+      toast.success(t('toast.messageRequest.sent'));
+      localStorage.setItem(key, JSON.stringify({ windowStart, count: count + 1 }));
+      // Remove user from discover grid after sending message request
+      setUsers(prev => prev.filter(u => u.id !== userId));
+    } catch (e) {
+      console.error('Error sending message request:', e);
+      toast.error(t('toast.messageRequest.error'));
+    }
+
+    setMessageRequestTarget(null);
   };
 
   const getAccountTier = (): 'free' | 'pro' | 'vip' => {
@@ -354,12 +410,16 @@ const DiscoverGrid: React.FC = () => {
         .limit(1)
         .maybeSingle();
       if (reciprocal) {
-        await createMatch(targetId);
-        const matchedUser = users.find(u => u.id === targetId) || { id: targetId, name: 'Someone', photos: [] };
-        showMatchAnimation(matchedUser);
+        const newMatch = await createMatch(targetId);
+        if (newMatch) {
+          const matchedUser = users.find(u => u.id === targetId) || { id: targetId, name: 'Someone', photos: [] };
+          showMatchAnimation(matchedUser, newMatch.id);
+        }
       } else {
         toast.success(t('discover.likes.sent'));
       }
+      // Remove user from discover grid after interaction
+      setUsers(prev => prev.filter(u => u.id !== targetId));
     } catch (e) {
       console.error('Error sending like:', e);
       toast.error(t('discover.likes.error'));
@@ -372,21 +432,17 @@ const DiscoverGrid: React.FC = () => {
         <h2 className={cn("text-2xl font-bold mb-2", theme.primary)}>{isVip ? t('discover.dailyVibes.titleVip') : isPro ? t('discover.dailyVibes.titlePro') : t('discover.dailyVibes.title')}</h2>
         <div className="flex flex-wrap gap-2">
           {VIBES.map(v => {
-            const locked = !isPremium && !FREE_VIBES.includes(v);
+            const locked = !isVip && !isPremium && !FREE_VIBES.includes(v);
             return (
               <button
                 key={v}
                 onClick={() => !locked && setVibeForToday(v)}
                 className={`px-3 py-1 rounded-full text-xs border flex items-center gap-1 ${
                   selectedVibe === v && !locked
-                    ? (isVip
-                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black border-amber-400'
-                        : isPro
-                            ? 'bg-[#ff7f50] text-white border-[#ff5e57]'
-                            : 'bg-pink-600 text-white border-pink-500')
+                    ? `${theme.button.primary} text-white ${theme.accent.border}`
                     : locked
                       ? 'bg-white/5 text-white/40 border-white/10'
-                      : isVip ? 'bg-amber-500/10 text-amber-300/80 border-amber-400/20' : isPro ? 'bg-cyan-500/10 text-cyan-300/80 border-cyan-400/20' : 'bg-white/10 text-white/80 border-white/20'
+                      : 'bg-white/10 text-white/80 border-white/20'
                 } ${locked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                 title={locked ? t('discover.vibes.tooltip.locked') : t('discover.vibes.tooltip.setToday')}
               >
@@ -412,7 +468,7 @@ const DiscoverGrid: React.FC = () => {
         </div>
       </div>
       <div className="grid grid-cols-4 gap-4">
-        {seededShuffle(
+        {randomShuffle(
           users
             .filter(u => {
               const distM = (u as any).distance_meters ?? null;
@@ -420,24 +476,17 @@ const DiscoverGrid: React.FC = () => {
               const uv = effectiveVibeForUser(u);
               const vibeMatch = selectedVibe ? uv === selectedVibe : true;
               return within && vibeMatch;
-            }),
-          currentUser?.id || 'seed'
+            })
         ).map((user) => (
           <Link to={`/user/${user.id}`} key={user.id} className="relative flex flex-col items-center space-y-2">
-            <div className={`relative w-16 h-16 rounded-full overflow-hidden ${
-              isVip
-                ? 'ring-2 ring-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
-                : isPro ? 'ring-2 ring-cyan-400/60' : ''
-            }`}>
+            <div className={`relative w-16 h-16 rounded-full overflow-hidden ring-2 ${theme.accent.border.replace('border-', 'ring-').replace('/30', '/60')}`}>
               <img src={user.photos[0]} alt={user.name} className="w-full h-full object-cover" />
-              {onlineUsers.hasOwnProperty(user.id) && (
-                <div className={`absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 ${
-                  isVip ? 'border-amber-300' : 'border-white'
-                }`}></div>
+              {Boolean(onlineUsers[String(user.id)]?.length) && (
+                <div className={`absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white`}></div>
               )}
             </div>
             <div className="text-center">
-              <h3 className={`font-bold text-xs ${isVip ? 'text-white' : isPro ? 'text-cyan-200' : 'text-white'}`}>{user.name}, {calculateAge(user.dateOfBirth || (user as any).dob)}</h3>
+              <h3 className={`font-bold text-xs text-white`}>{user.name}, {calculateAge(user.dateOfBirth || (user as any).dob)}</h3>
               <div className="flex items-center justify-center text-white/80 text-xs mt-1">
                 <span>{formatDistance((user as any).distance_meters || 0)}</span>
               </div>
@@ -474,39 +523,31 @@ const DiscoverGrid: React.FC = () => {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        handleLikeUser(user.id);
+                        if (user && user.id) {
+                          handleLikeUser(user.id);
+                        }
                       }}
-                      className={`absolute top-0 left-0 w-7 h-7 rounded-full flex items-center justify-center disabled:opacity-50 ${
-                        isVip
-                          ? 'bg-amber-500/30 text-amber-300'
-                          : isPro
-                              ? 'bg-cyan-500/20 text-cyan-400'
-                              : 'bg-white/20 backdrop-blur-lg text-white'
-                      }`}
+                      className={`absolute top-0 left-0 w-7 h-7 rounded-full flex items-center justify-center disabled:opacity-50 bg-white/20 backdrop-blur-lg ${theme.primary}`}
                       title={isProVipLocal ? t('discover.likes.tooltip.like') : likesRemaining > 0 ? t('discover.likes.tooltip.likeRemaining', { count: likesRemaining }) : t('discover.likes.tooltip.limit')}
                       disabled={likedIds.has(user.id)}
                     >
                       <Heart
                         size={16}
-                        className={isVip ? 'text-amber-300' : isPro ? 'text-cyan-400' : 'text-pink-500'}
+                        className={theme.primary}
                         fill={likedIds.has(user.id) ? 'currentColor' : 'none'}
                       />
                     </button>
                   )}
                   {highlyCompatible && (
-                    <button 
+                    <button
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        handleSendMessageRequest(user.id);
+                        if (user && user.id) {
+                          handleSendMessageRequest(user);
+                        }
                       }}
-                      className={`absolute top-0 right-0 w-7 h-7 rounded-full flex items-center justify-center ${
-                        isVip
-                          ? 'bg-amber-500/30 text-amber-300'
-                          : isPro
-                              ? 'bg-cyan-500/20 text-cyan-400'
-                              : 'bg-white/20 backdrop-blur-lg text-white'
-                      }`}
+                      className={`absolute top-0 right-0 w-7 h-7 rounded-full flex items-center justify-center bg-white/20 backdrop-blur-lg ${theme.primary}`}
                       title={t('discover.messageRequest.tooltip')}
                     >
                       <MessageSquare size={16} />
@@ -518,6 +559,13 @@ const DiscoverGrid: React.FC = () => {
           </Link>
         ))}
       </div>
+      {messageRequestTarget && (
+        <MessageRequestModal
+          receiverName={messageRequestTarget.name}
+          onSend={handleSendRequestMessage}
+          onClose={() => setMessageRequestTarget(null)}
+        />
+      )}
     </div>
   );
 };

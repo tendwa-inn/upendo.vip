@@ -1,311 +1,332 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { Link, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
-import { Heart, Mail, Lock, X, Download } from 'lucide-react';
-import toast from 'react-hot-toast';
-import SplashScreen from '../components/SplashScreen';
+import { ChevronDown, Ghost, Users, FileText, Shield, Download, Menu, X, Info, Heart, Sparkles, Zap } from 'lucide-react';
 import FloatingGhosts from '../components/FloatingGhosts';
-import AddToHomeScreenModal from '../components/modals/AddToHomeScreenModal';
+import { useSoundSettings, useButtonSound } from '../hooks/useButtonSound';
+import { soundService } from '../soundService';
 
 const HomePage: React.FC = () => {
-  const { t, i18n } = useTranslation();
-  const { signInWithGoogle } = useAuthStore();
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { user, signInWithGoogle } = useAuthStore();
+  const { isSoundEnabled, toggleSound } = useSoundSettings();
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  const [isLangMenuOpen, setLangMenuOpen] = useState(false);
-  const [isProductsOpen, setProductsOpen] = useState(false);
-  const [showSplash, setShowSplash] = useState(true);
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
-  const [isInstallModalOpen, setInstallModalOpen] = useState(false);
-  const [showInstallButton, setShowInstallButton] = useState(false);
+  const handleGetStarted = useButtonSound(signInWithGoogle);
+  const handleLogin = useButtonSound(() => navigate('/login'));
 
-  useEffect(() => {
-    const checkIfInstalled = async () => {
-      try {
-        if ('serviceWorker' in navigator) {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-          if (isStandalone || registrations.length > 0) {
-            setShowInstallButton(false);
-            return true;
-          }
-        }
-      } catch (error) {
-        console.error('Error checking installation status:', error);
-      }
-      return false;
-    };
-
-    const handleInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-      
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      const isChrome = /Chrome/i.test(navigator.userAgent);
-      const isSafari = /Safari/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent);
-      
-      if (isMobile && (isChrome || isSafari)) {
-        setShowInstallButton(true);
-      } else {
-        setInstallModalOpen(true);
-      }
-    };
-
-    const setupInstallButton = async () => {
-      const isInstalled = await checkIfInstalled();
-      if (!isInstalled) {
-        window.addEventListener('beforeinstallprompt', handleInstallPrompt);
-        
-        setTimeout(() => {
-          if (!installPrompt) {
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            if (isMobile) {
-              setShowInstallButton(true);
-            }
-          }
-        }, 3000);
-      }
-    };
-    
-    setupInstallButton();
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
-    };
-  }, []);
-
-  useEffect(() => {
-    const manualTimer = setTimeout(() => {
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      if (isMobile && !showInstallButton && !installPrompt) {
-        setShowInstallButton(true);
-      }
-    }, 5000);
-
-    return () => clearTimeout(manualTimer);
-  }, [showInstallButton, installPrompt]);
-
-  useEffect(() => {
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    if (isMobile) {
-      setTimeout(() => {
-        if (!installPrompt) {
-          setShowInstallButton(true);
-        }
-      }, 1000);
-    }
-  }, []);
-
-  const handleInstall = async () => {
-    if (installPrompt) {
-      try {
-        const result = await installPrompt.prompt();
-        if (result.outcome === 'accepted') {
-          toast.success('App installed successfully!');
-        } else {
-          toast('Installation cancelled');
-        }
-        setShowInstallButton(false);
-      } catch (error) {
-        console.error('Installation failed:', error);
-        toast.error('Installation failed. Please try again.');
-      }
-    } else {
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-      if (isIOS) {
-        toast('To install on iOS: Tap the share button and select "Add to Home Screen"');
-      } else {
-        toast.error('Installation not available. Please try using Chrome or Safari.');
-      }
-    }
+  const createDrawerHandler = (action: () => void) => {
+    return useButtonSound(() => {
+      action();
+      setIsDrawerOpen(false);
+    });
   };
 
-  React.useEffect(() => {
-    const id = setTimeout(() => setShowSplash(false), 5000);
-    return () => clearTimeout(id);
-  }, []);
+  const handleLoginClick = createDrawerHandler(() => navigate('/login'));
+  const handleCommunityClick = createDrawerHandler(() => window.open('https://chat.whatsapp.com/DYVP65HIBC25WaJMfIIqsa', '_blank'));
+  const handleTermsClick = createDrawerHandler(() => navigate('/terms'));
+  const handlePrivacyClick = createDrawerHandler(() => navigate('/privacy'));
+  const handleAboutClick = createDrawerHandler(() => navigate('/about'));
+  const handleDownloadClick = createDrawerHandler(() => {});
 
-  const languages = [
-    { code: 'en', name: 'English' },
-    { code: 'fr', name: 'French' },
-    { code: 'ar', name: 'Arabic' },
-    { code: 'zh', name: 'Chinese' },
-    { code: 'bem', name: 'Ichibemba' },
-    { code: 'sw', name: 'Swahili' },
-    { code: 'ny', name: 'Chichewa' },
-    { code: 'xh', name: 'Xhosa' },
-    { code: 'af', name: 'Afrikaans' },
+  const drawerItems = [
+    { label: 'Login / Sign Up', icon: <Ghost className="w-5 h-5" />, onClick: handleLoginClick },
+    { label: 'Join Community', icon: <Users className="w-5 h-5" />, onClick: handleCommunityClick },
+    { label: 'Terms of Service', icon: <FileText className="w-5 h-5" />, onClick: handleTermsClick },
+    { label: 'Privacy Policy', icon: <Shield className="w-5 h-5" />, onClick: handlePrivacyClick },
+    { label: 'About Us', icon: <Info className="w-5 h-5" />, onClick: handleAboutClick },
+    { label: 'Download App', icon: <Download className="w-5 h-5" />, onClick: handleDownloadClick },
   ];
 
-  const handleLanguageChange = (langCode: string) => {
-    i18n.changeLanguage(langCode);
-    try {
-      localStorage.setItem('lang', langCode);
-    } catch {}
-    setLangMenuOpen(false);
-  };
+  const stats = [
+    { icon: <Users className="w-4 h-4" />, value: '10K+', label: 'Users' },
+    { icon: <Heart className="w-4 h-4" />, value: 'Zero', label: 'Ghosting' },
+    { icon: <Sparkles className="w-4 h-4" />, value: 'Real', label: 'Connections' },
+  ];
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-[#22090E] to-[#2E0C13] relative overflow-hidden">
-      <SplashScreen visible={showSplash} />
-      
-      {showInstallButton && !showSplash && (
-        <motion.button
-          initial={{ opacity: 0, scale: 0.8, y: -20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={handleInstall}
-          className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-gradient-to-r from-rose-700 to-purple-800 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/20 backdrop-blur-sm opacity-40"
-          style={{
-            background: 'linear-gradient(135deg, #be185d, #6b21a8)',
-            boxShadow: '0 4px 15px rgba(190, 24, 93, 0.3)'
-          }}
-        >
-          <Download size={16} className="flex-shrink-0" />
-          <span className="hidden sm:inline font-semibold">Install App</span>
-        </motion.button>
-      )}
-      
+    <div className="min-h-screen bg-[#2D0B0E] relative overflow-hidden">
       <FloatingGhosts />
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="w-full max-w-md"
-      >
-        {/* Visible SEO Content for Google OAuth Verification */}
-        <div style={{ textAlign: 'center', padding: '20px 0' }}>
-          <h1 style={{ fontSize: '18px', margin: '0', fontWeight: '600' }}>Upendo</h1>
-          <p style={{ fontSize: '14px', margin: '4px 0 0 0', color: '#666' }}>Upendo is the no-ghost dating app</p>
-        </div>
 
-        <div className="text-center mb-8">
+      {/* Animated background glow */}
+      <div className="absolute inset-0 z-0">
+        <motion.div
+          animate={{ scale: [1, 1.2, 1], opacity: [0.15, 0.25, 0.15] }}
+          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(255,45,117,0.2) 0%, transparent 70%)' }}
+        />
+        <motion.div
+          animate={{ scale: [1.2, 1, 1.2], opacity: [0.1, 0.2, 0.1] }}
+          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(236,72,153,0.15) 0%, transparent 70%)' }}
+        />
+      </div>
+
+      {/* Header */}
+      <motion.header
+        initial={{ y: -80, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6, type: 'spring', stiffness: 120 }}
+        className="relative z-50 p-4 md:p-6"
+      >
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          {/* Logo */}
           <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-            className="inline-flex items-center justify-center w-20 h-20 bg-white/20 backdrop-blur-lg rounded-full mb-4"
+            className="flex items-center space-x-3 cursor-pointer"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => navigate('/')}
           >
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}
-              className="drop-shadow-[0_0_12px_rgba(236,72,153,0.85)]"
-            >
-              <svg viewBox="0 0 24 24" className="w-10 h-10 text-pink-500" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <defs>
-                  <mask id="loginGhostEyesMask">
-                    <rect width="24" height="24" fill="white"/>
-                    <circle cx="9" cy="10" r="1.4" fill="black"/>
-                    <circle cx="15" cy="10" r="1.4" fill="black"/>
-                  </mask>
-                </defs>
-                <path
-                  d="M12 2c-4.418 0-8 3.582-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10c0-4.418-3.582-8-8-8z"
-                  fill="currentColor"
-                  mask="url(#loginGhostEyesMask)"
-                />
-              </svg>
-            </motion.div>
+            <div className="relative">
+              <motion.div
+                animate={{ y: [0, -4, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-[#ff2d75] to-[#ff2d75] rounded-full flex items-center justify-center shadow-lg shadow-[#ff2d75]/40"
+              >
+                <Ghost className="w-5 h-5 md:w-6 md:h-6 text-white" />
+              </motion.div>
+              <motion.div
+                animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0.15, 0.3] }}
+                transition={{ duration: 2.5, repeat: Infinity }}
+                className="absolute -inset-2 rounded-full bg-[#ff2d75] blur-md"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  soundService.playButtonClick();
+                  toggleSound();
+                }}
+              />
+            </div>
+            <span className="text-xl md:text-2xl font-bold text-white tracking-wider">Upendo</span>
           </motion.div>
-          
-          <motion.h1 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            transition={{ delay: 0.4 }} 
-            className="text-5xl font-bold text-white"
+
+          {/* Menu button */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setIsDrawerOpen(true)}
+            className="flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-4 py-2.5 md:px-5 md:py-3 text-white hover:bg-white/15 transition-colors"
           >
-            {t('findYourPerfectMatch')}
+            <Menu className="w-4 h-4 md:w-5 md:h-5" />
+            <span className="font-medium text-sm md:text-base hidden sm:inline">Menu</span>
+          </motion.button>
+        </div>
+      </motion.header>
+
+      {/* Main Hero */}
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-[calc(100vh-80px)] px-6 -mt-12 md:-mt-16">
+        <div className="text-center max-w-lg mx-auto">
+
+          {/* Ghost mascot */}
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ duration: 1.2, type: 'spring', stiffness: 80, damping: 12 }}
+            className="mb-8 md:mb-10"
+          >
+            <div className="relative inline-block">
+              {/* Neon glow ring */}
+              <motion.div
+                animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.2, 0.4] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                className="absolute -inset-5 rounded-full"
+                style={{ background: 'conic-gradient(from 0deg, #ff2d75, #ff6b9d, #ff2d75, transparent, #ff2d75)', filter: 'blur(12px)' }}
+              />
+
+              {/* Ghost container */}
+              <motion.div
+                animate={{
+                  y: [0, -15, 0],
+                  rotate: [0, 3, -3, 0],
+                }}
+                transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+                className="relative w-28 h-28 md:w-36 md:h-36 bg-gradient-to-br from-[#ff2d75] to-[#ff2d75] rounded-full flex items-center justify-center shadow-2xl shadow-[#ff2d75]/50"
+              >
+                <Ghost className="w-14 h-14 md:w-18 md:h-18 text-white" />
+              </motion.div>
+
+              {/* Orbiting particles */}
+              {[...Array(6)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  animate={{
+                    rotate: [0, 360],
+                  }}
+                  transition={{
+                    duration: 8 + i * 2,
+                    repeat: Infinity,
+                    ease: 'linear',
+                    delay: i * 0.5,
+                  }}
+                  className="absolute inset-0"
+                  style={{ transform: `rotate(${i * 60}deg)` }}
+                >
+                  <motion.div
+                    animate={{ scale: [0.5, 1, 0.5], opacity: [0.3, 0.8, 0.3] }}
+                    transition={{ duration: 2 + i * 0.5, repeat: Infinity, ease: 'easeInOut' }}
+                    className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 md:w-2.5 md:h-2.5 bg-[#ff2d75] rounded-full shadow-lg shadow-[#ff2d75]/60"
+                    style={{ marginTop: `-${20 + i * 6}px` }}
+                  />
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* Title */}
+          <motion.h1
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.6, type: 'spring' }}
+            className="text-4xl md:text-6xl font-extrabold mb-3 tracking-tight"
+          >
+            <span className="bg-gradient-to-r from-white via-white to-white/80 bg-clip-text text-transparent">
+              Upendo
+            </span>
           </motion.h1>
-          <motion.p 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            transition={{ delay: 0.6 }} 
-            className="text-lg text-pink-300 mt-2 mb-8"
+
+          {/* Subtitle */}
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.9 }}
+            className="text-lg md:text-xl text-pink-300/90 font-medium mb-10 md:mb-12"
           >
-            {t('appPurpose')}
+            The No-Ghost Dating App
           </motion.p>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={signInWithGoogle}
-            className="w-full flex items-center justify-center gap-2 bg-white/20 text-white font-bold py-3 rounded-2xl transition-all duration-300 hover:bg-white/30 mt-4"
+          {/* CTA Buttons */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 1.2 }}
+            className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-10 md:mb-12"
           >
-            <img src="/google-logo.svg" alt="Google" className="w-5 h-5" />
-            {t('continueWithGoogle')}
-          </motion.button>
-
-        </div>
-
-        <footer className="absolute bottom-4 left-0 right-0 text-center text-white/60 text-sm">
-          <div className="flex justify-center gap-4 mb-2">
-            <div className="relative">
-              <button onClick={() => setLangMenuOpen(!isLangMenuOpen)} className="hover:text-white">{t('language')}</button>
-              {isLangMenuOpen && (
-                <div className="absolute bottom-full mb-2 w-40 bg-white/10 backdrop-blur-lg rounded-xl p-2 text-left">
-                  {languages.map(lang => (
-                    <button 
-                      key={lang.code} 
-                      onClick={() => handleLanguageChange(lang.code)}
-                      className={`block w-full text-left px-3 py-1.5 rounded-md hover:bg-white/20 transition-colors ${i18n.language === lang.code ? 'bg-white/20' : ''}`}
-                    >
-                      {lang.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <a href="#" onClick={(e) => { e.preventDefault(); setProductsOpen(true); }} className="hover:text-white">{t('products')}</a>
-            <Link to="/privacy" className="hover:text-white">{t('privacyPolicy', 'Privacy Policy')}</Link>
-            <Link to="/terms" className="hover:text-white">{t('termsOfService')}</Link>
-          </div>
-          <p className="text-pink-400">{t('copyright')}</p>
-        </footer>
-
-        {/* Additional visible footer links for Google OAuth Verification */}
-        <div style={{ padding: '10px', textAlign: 'center', fontSize: '12px' }}>
-          <a href="/privacy" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>Privacy Policy</a> | <a href="/terms" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>Terms</a>
-        </div>
-
-        {isProductsOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="w-full max-w-2xl bg-gradient-to-br from-[#1a0f14] to-[#2E0C13] text-white rounded-2xl border border-pink-500/30 shadow-2xl overflow-hidden"
+            <motion.button
+              whileHover={{ scale: 1.04, boxShadow: '0 0 30px rgba(255,45,117,0.4)' }}
+              whileTap={{ scale: 0.96 }}
+              onClick={handleGetStarted}
+              className="relative px-8 py-3.5 md:px-10 md:py-4 bg-gradient-to-r from-[#ff2d75] to-[#ff2d75] text-white rounded-full text-base md:text-lg font-bold shadow-xl shadow-[#ff2d75]/30 overflow-hidden group"
             >
-              <div className="flex items-center justify-between p-4 border-b border-white/10">
-                <h2 className="text-xl font-bold text-pink-400">{t('products')}</h2>
-                <button
-                  onClick={() => setProductsOpen(false)}
-                  aria-label={t('general.close')}
-                  className="p-2 bg-white/10 rounded-lg hover:bg-white/20"
+              <span className="relative z-10 flex items-center justify-center gap-2">
+                <Zap className="w-5 h-5" />
+                Get Started
+              </span>
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                initial={{ x: '-100%' }}
+                whileHover={{ x: '100%' }}
+                transition={{ duration: 0.6 }}
+              />
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.04, backgroundColor: 'rgba(255,255,255,0.15)' }}
+              whileTap={{ scale: 0.96 }}
+              onClick={handleLogin}
+              className="px-8 py-3.5 md:px-10 md:py-4 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-full text-base md:text-lg font-bold hover:border-white/30 transition-colors"
+            >
+              Login
+            </motion.button>
+          </motion.div>
+
+          {/* Stats */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1, delay: 1.6 }}
+            className="flex justify-center gap-6 md:gap-10"
+          >
+            {stats.map((stat, i) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.8 + i * 0.15 }}
+                className="text-center"
+              >
+                <div className="flex items-center justify-center gap-1.5 mb-1">
+                  <span className="text-[#ff2d75]">{stat.icon}</span>
+                  <span className="text-white font-bold text-lg md:text-xl">{stat.value}</span>
+                </div>
+                <span className="text-white/50 text-xs md:text-sm">{stat.label}</span>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Slide-in Drawer */}
+      <AnimatePresence>
+        {isDrawerOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+              onClick={() => setIsDrawerOpen(false)}
+            />
+
+            {/* Drawer panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed right-0 top-0 bottom-0 z-50 w-72 md:w-80 bg-[#1a0709]/95 backdrop-blur-xl border-l border-white/10 flex flex-col"
+            >
+              {/* Drawer header */}
+              <div className="flex items-center justify-between p-5 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-[#ff2d75] rounded-full flex items-center justify-center">
+                    <Ghost className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="text-white font-bold text-lg">Upendo</span>
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.1, rotate: 90 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/15 transition-colors"
                 >
                   <X className="w-5 h-5" />
-                </button>
+                </motion.button>
               </div>
-              <div className="p-6 space-y-4 text-sm leading-6 text-white/90 max-h-[70vh] overflow-y-auto">
-                <p>{t('tos.p1')}</p>
-                <p>{t('tos.p2')}</p>
-                <p>{t('tos.p3')}</p>
-                <p>{t('tos.p4')}</p>
+
+              {/* Drawer items */}
+              <div className="flex-1 py-4 overflow-y-auto">
+                {drawerItems.map((item, index) => (
+                  <motion.button
+                    key={item.label}
+                    initial={{ x: 60, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ delay: 0.1 + index * 0.06, type: 'spring', stiffness: 150 }}
+                    onClick={item.onClick}
+                    className="w-full flex items-center gap-4 px-6 py-3.5 text-white/80 hover:text-white hover:bg-white/5 transition-all group"
+                  >
+                    <span className="text-[#ff2d75] group-hover:scale-110 transition-transform">{item.icon}</span>
+                    <span className="font-medium text-sm">{item.label}</span>
+                  </motion.button>
+                ))}
+              </div>
+
+              {/* Drawer footer */}
+              <div className="p-5 border-t border-white/10">
+                <div className="flex items-center gap-2 text-white/40 text-xs">
+                  <Ghost className="w-3.5 h-3.5" />
+                  <span>No ghosts allowed</span>
+                </div>
               </div>
             </motion.div>
-          </div>
+          </>
         )}
-
-
-      </motion.div>
-
-      {isInstallModalOpen && (
-        <AddToHomeScreenModal
-          isOpen={isInstallModalOpen}
-          onClose={() => setInstallModalOpen(false)}
-          installPrompt={installPrompt}
-        />
-      )}
+      </AnimatePresence>
     </div>
   );
 };

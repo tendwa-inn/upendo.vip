@@ -7,12 +7,23 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  overflow-x: hidden;
+}
+
+/* Global font size adjustment - slightly smaller but still large */
+html {
+  font-size: 15px; /* Slightly smaller than default 16px */
+}
+
+@media (max-width: 640px) {
+  html {
+    font-size: 14px; /* Slightly smaller on mobile */
+  }
 }
 
 /* Prevent scroll issues */
 body {
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   background-color: #000; /* Base background color */
 }
@@ -48,6 +59,15 @@ body {
 }
 
 
+
+/* Hide scrollbar but keep scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
 
 /* Glassmorphism effects */
 .glass {
@@ -99,6 +119,97 @@ body {
   transform: translateY(-5px);
 }
 
+/* Tremor dropdown dark overrides for admin pages */
+/* Target all possible dropdown containers */
+[data-headlessui-state] [role="listbox"],
+[data-headlessui-state] [role="menu"],
+.tremor-MultiSelectBox-container + div,
+.tremor-SelectBox-container + div,
+div[class*="tremor"][class*="absolute"][class*="z-10"],
+div[class*="tremor"][class*="max-h"][class*="overflow-auto"],
+div[class*="tremor"][class*="mt-1"],
+ul[class*="tremor"],
+div[class*="tremor"][class*="rounded"][class*="shadow"] {
+  background-color: #1a0a10 !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+/* Dropdown list items */
+[data-headlessui-state] [role="listbox"] [role="option"],
+[data-headlessui-state] [role="menu"] [role="menuitem"],
+.tremor-MultiSelectBox-container + div li,
+.tremor-SelectBox-container + div li,
+div[class*="tremor"][class*="absolute"] li,
+div[class*="tremor"][class*="mt-1"] li,
+ul[class*="tremor"] li {
+  background-color: transparent !important;
+  color: #fff !important;
+  padding: 10px 16px !important;
+  font-size: 0.875rem !important;
+}
+
+/* Hover state */
+[data-headlessui-state] [role="listbox"] [role="option"]:hover,
+[data-headlessui-state] [role="listbox"] [role="option"][data-headlessui-state="active"],
+[data-headlessui-state] [role="menu"] [role="menuitem"]:hover,
+.tremor-MultiSelectBox-container + div li:hover,
+.tremor-SelectBox-container + div li:hover,
+div[class*="tremor"][class*="absolute"] li:hover,
+ul[class*="tremor"] li:hover {
+  background-color: rgba(236, 72, 153, 0.15) !important;
+  color: #ec4899 !important;
+}
+
+/* Selected state */
+[data-headlessui-state] [role="listbox"] [role="option"][aria-selected="true"],
+.tremor-MultiSelectBox-container + div li[aria-selected="true"],
+div[class*="tremor"][class*="absolute"] li[aria-selected="true"] {
+  background-color: rgba(236, 72, 153, 0.2) !important;
+  color: #ec4899 !important;
+}
+
+/* Dropdown search input */
+[data-headlessui-state] input[type="text"],
+.tremor-MultiSelectBox-container + div input[type="text"],
+div[class*="tremor"][class*="absolute"] input[type="text"] {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+}
+
+/* Trigger button */
+.tremor-MultiSelectBox-container button,
+.tremor-SelectBox-container button,
+div[class*="tremor-MultiSelectBox"] button,
+div[class*="tremor-SelectBox"] button {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  color: #fff !important;
+  border-radius: 12px !important;
+}
+
+/* Selected items in MultiSelect */
+.tremor-MultiSelectBox-container span[class*="bg-blue"],
+.tremor-MultiSelectBox-container span[class*="bg-tremor"],
+div[class*="tremor-MultiSelectBox"] span[class*="bg-"] {
+  background-color: rgba(236, 72, 153, 0.2) !important;
+  color: #ec4899 !important;
+  border: 1px solid rgba(236, 72, 153, 0.3) !important;
+  border-radius: 8px !important;
+}
+
+/* Checkbox in dropdown */
+[data-headlessui-state] [role="listbox"] input[type="checkbox"],
+div[class*="tremor"] input[type="checkbox"] {
+  accent-color: #ec4899 !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -129,6 +240,22 @@ body {
   .swipe-card-container {
     height: 80vh;
   }
+}
+
+/* Pull-to-refresh styles */
+body {
+  overscroll-behavior: contain; /* Prevent default pull-to-refresh */
+}
+
+.pull-refresh-container {
+  touch-action: pan-y; /* Allow vertical scrolling but prevent default pull */
+  overscroll-behavior: contain;
+}
+
+/* Prevent text selection during pull */
+.pull-refresh-container * {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* VIP theme styles */
@@ -191,7 +318,83 @@ body {
 }
 
 @media (max-width: 640px) {
-  html {
-    font-size: 14px;
-  }
+
+}
+
+/* Hide Trae badge elements */
+[id*="trae-badge"] {
+   display: none !important;
+}
+
+/* System message rich text styles */
+.system-message-content b,
+.system-message-content strong {
+  font-weight: 700;
+  color: #fff;
+}
+
+.system-message-content i,
+.system-message-content em {
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.system-message-content u,
+.system-message-content ins {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.system-message-content s,
+.system-message-content strike {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.system-message-content a {
+  color: #f472b6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.system-message-content br {
+  display: block;
+  content: "";
+  margin-top: 0.5em;
+}
+
+.system-message-content p {
+  margin-bottom: 0.5em;
+}
+
+.system-message-content ul,
+.system-message-content ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.system-message-content li {
+  margin-bottom: 0.25em;
+}
+
+.system-message-content blockquote {
+  border-left: 3px solid rgba(255, 255, 255, 0.3);
+  padding-left: 0.75em;
+  margin: 0.5em 0;
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.system-message-content a[style*="display"] {
+  display: inline-block;
+  text-align: center;
+  max-width: 100%;
+  background-image: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 100%);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.system-message-content a[style*="display"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }

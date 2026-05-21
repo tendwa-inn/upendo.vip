@@ -41,7 +41,6 @@ const LocationStep: React.FC = () => {
       };
 
       await createProfile(finalData);
-      navigate('/discover', { replace: true });
 
     } catch (error: any) {
       console.error('Failed to create profile:', error);

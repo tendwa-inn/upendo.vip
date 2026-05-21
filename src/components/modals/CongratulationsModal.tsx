@@ -79,7 +79,7 @@ const CongratulationsModal: React.FC<CongratulationsModalProps> = ({ isOpen, onC
                       {isExpired ? t('modal.congrats.expired') : t('modal.congrats.daysRemaining', { days: daysLeft, suffix: daysLeft !== 1 ? 's' : '' })}
                     </p>
                     <p className="text-white/40 text-xs">
-                      Expires {expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {t('modal.congrats.expires', { date: expiryDate.toLocaleDateString() })}
                     </p>
                   </div>
                 </div>

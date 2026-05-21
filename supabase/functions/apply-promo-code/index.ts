@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (existingRedemption) {
-       return new Response(JSON.stringify({ error: 'You have already used this promo code.' }), {
+       return new Response(JSON.stringify({ error: 'Sorry, you cannot enter the same promo code twice, buddy.' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       });

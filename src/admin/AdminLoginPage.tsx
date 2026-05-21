@@ -4,12 +4,14 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Shield } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { useTranslation } from 'react-i18next';
 
 const AdminLoginPage: React.FC = () => {
   const [passcode, setPasscode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { setProfile, setSession } = useAuthStore();
+  const { t } = useTranslation();
 
   const ADMIN_PASSCODE = 'NLG36QM4FYR';
 
@@ -65,10 +67,10 @@ const AdminLoginPage: React.FC = () => {
 
       setSession(mockAdminSession);
       setProfile(mockAdminProfile);
-      toast.success('Admin access granted!');
+      toast.success(t('admin.accessGranted'));
       navigate('/admin/dashboard', { replace: true });
     } else {
-      toast.error('Invalid passcode.');
+      toast.error(t('admin.invalidPasscode'));
     }
     setIsLoading(false);
   };
@@ -96,7 +98,7 @@ const AdminLoginPage: React.FC = () => {
             transition={{ delay: 0.4 }}
             className="text-4xl font-bold text-white mb-2"
           >
-            Admin Login
+            {t('admin.login')}
           </motion.h1>
           <motion.p
             initial={{ opacity: 0 }}
@@ -104,7 +106,7 @@ const AdminLoginPage: React.FC = () => {
             transition={{ delay: 0.6 }}
             className="text-white/80 text-lg"
           >
-            Enter passcode to access admin panel
+            {t('admin.loginDesc')}
           </motion.p>
         </div>
 
@@ -117,7 +119,7 @@ const AdminLoginPage: React.FC = () => {
         >
           <div>
             <label className="block text-white/90 text-sm font-medium mb-2">
-              Admin Passcode
+              {t('admin.passcode')}
             </label>
             <div className="relative">
               <Shield className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/60" />
@@ -126,7 +128,7 @@ const AdminLoginPage: React.FC = () => {
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-white/20 border border-white/30 rounded-2xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-pink-400 focus:border-transparent"
-                placeholder="Enter 11-digit passcode"
+                placeholder={t('admin.passcodePlaceholder')}
                 required
               />
             </div>
@@ -139,7 +141,7 @@ const AdminLoginPage: React.FC = () => {
             disabled={isLoading}
             className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold rounded-2xl hover:from-pink-600 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Verifying...' : 'Access Admin Panel'}
+            {isLoading ? t('admin.verifying') : t('admin.access')}
           </motion.button>
         </motion.form>
       </motion.div>

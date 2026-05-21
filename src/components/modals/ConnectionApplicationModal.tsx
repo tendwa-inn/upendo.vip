@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { connectionApplicationService } from '../../services/connectionApplicationService';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 const ConnectionApplicationModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
+  const { t } = useTranslation();
   const { profile, user } = useAuthStore();
   const [name, setName] = useState('');
   const [bio, setBio] = useState('');
@@ -71,7 +73,7 @@ const ConnectionApplicationModal: React.FC<Props> = ({ isOpen, onClose, onSucces
       setPhotos(newPhotos);
     } catch (error) {
       console.error('Error uploading photo:', error);
-      toast.error('Failed to upload photo');
+      toast.error(t('connection.uploadFailed'));
     } finally {
       setUploading(false);
     }
@@ -87,12 +89,12 @@ const ConnectionApplicationModal: React.FC<Props> = ({ isOpen, onClose, onSucces
     if (!user || !profile) return;
 
     if (!name.trim() || !calculatedAge || !bio.trim()) {
-      toast.error('Please fill in all required fields');
+      toast.error(t('connection.fillRequired'));
       return;
     }
 
     if (photos.length === 0) {
-      toast.error('Please add at least one photo');
+      toast.error(t('connection.addPhoto'));
       return;
     }
 
@@ -108,12 +110,12 @@ const ConnectionApplicationModal: React.FC<Props> = ({ isOpen, onClose, onSucces
         photos: photos.filter(Boolean),
       });
 
-      toast.success('Application submitted!');
+      toast.success(t('connection.submitted'));
       onSuccess();
       onClose();
     } catch (error) {
       console.error('Error submitting application:', error);
-      toast.error('Failed to submit application');
+      toast.error(t('connection.submitFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -149,7 +151,7 @@ const ConnectionApplicationModal: React.FC<Props> = ({ isOpen, onClose, onSucces
               type="text"
               value={calculatedAge || ''}
               disabled
-              placeholder="Auto-filled from profile"
+              placeholder={t('connection.autoFilled')}
               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/50 cursor-not-allowed"
             />
           </div>

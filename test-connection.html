@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Connection Test</title>
+</head>
+<body>
+    <h1>Supabase Connection Test</h1>
+    <div id="results"></div>
+    
+    <script type="module">
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+        
+        const supabaseUrl = 'https://kvfockaztqldgdobpntf.supabase.co'
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2Zm9ja2F6dHFsZGdkb2JwbnRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3NDE5MDcsImV4cCI6MjA4ODMxNzkwN30.OaZF0WhYCpc5vbFu1HixD_PcCOJlnOsmchLKxwrb5VA'
+        
+        const results = document.getElementById('results')
+        
+        try {
+            results.innerHTML += '<p>Creating Supabase client...</p>'
+            const supabase = createClient(supabaseUrl, supabaseAnonKey)
+            
+            results.innerHTML += '<p>Testing connection to app_settings table...</p>'
+            const { data, error } = await supabase
+                .from('app_settings')
+                .select('*')
+                .limit(1)
+            
+            if (error) {
+                results.innerHTML += `<p style="color: red;">Error: ${error.message}</p>`
+                console.error('Supabase error:', error)
+            } else {
+                results.innerHTML += `<p style="color: green;">Success! Connected to app_settings table.</p>`
+                results.innerHTML += `<p>Data: ${JSON.stringify(data)}</p>`
+                console.log('Supabase data:', data)
+            }
+            
+        } catch (err) {
+            results.innerHTML += `<p style="color: red;">Connection failed: ${err.message}</p>`
+            console.error('Connection error:', err)
+        }
+    </script>
+</body>
+</html>

@@ -11,7 +11,7 @@ interface LikeStore {
 
 export const useLikeStore = create<LikeStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       likedUserIds: new Set(),
 
       fetchLikedUsers: async (userId: string) => {
@@ -25,12 +25,30 @@ export const useLikeStore = create<LikeStore>()(
           return;
         }
 
-        const likedIds = new Set(data.map(like => like.liked_id));
+        const likedIds = new Set(data?.map(like => like.liked_id) || []);
         set({ likedUserIds: likedIds });
       },
 
       addLikedUser: (userId: string) => {
-        set(state => ({ likedUserIds: new Set(state.likedUserIds).add(userId) }));
+        set(state => {
+          console.log('addLikedUser - likedUserIds type:', typeof state.likedUserIds);
+          console.log('addLikedUser - likedUserIds value:', state.likedUserIds);
+          
+          // Safely convert to Set
+          const currentLikedUserIds =
+            state.likedUserIds instanceof Set
+              ? state.likedUserIds
+              : new Set(
+                  Array.isArray(state.likedUserIds)
+                    ? state.likedUserIds
+                    : []
+                );
+          
+          const updated = new Set(currentLikedUserIds);
+          updated.add(userId);
+          
+          return { likedUserIds: updated };
+        });
       },
 
       reset: () => {
@@ -42,7 +60,7 @@ export const useLikeStore = create<LikeStore>()(
       serialize: (state) => JSON.stringify({ ...state, likedUserIds: Array.from(state.likedUserIds) }),
       deserialize: (str) => {
         const state = JSON.parse(str);
-        state.likedUserIds = new Set(state.likedUserIds);
+        state.likedUserIds = new Set(Array.isArray(state.likedUserIds) ? state.likedUserIds : []);
         return state;
       },
     }

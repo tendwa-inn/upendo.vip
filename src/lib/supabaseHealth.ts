@@ -1,42 +1,82 @@
 import { supabase } from './supabaseClient';
 
-export async function checkSupabaseHealth() {
+export interface SupabaseHealth {
+  healthy: boolean;
+  error?: any;
+  responseTime?: number;
+}
+
+/**
+ * Check if Supabase connection is healthy by performing a simple query
+ */
+export async function checkSupabaseHealth(): Promise<SupabaseHealth> {
+  const startTime = Date.now();
+
   try {
-    // Test basic connectivity with a simple query
+    // Test with a simple, lightweight query
     const { data, error } = await supabase
-      .from('profiles')
+      .from('app_settings')
       .select('id')
-      .limit(1);
-    
+      .limit(1)
+      .maybeSingle();
+
+    const responseTime = Date.now() - startTime;
+
     if (error) {
-      console.error('Supabase health check failed:', error);
-      return { healthy: false, error: error.message };
+      return { healthy: false, error, responseTime };
     }
-    
-    console.log('Supabase health check passed');
-    return { healthy: true };
-  } catch (error: any) {
-    console.error('Supabase connection error:', error);
-    return { healthy: false, error: error.message };
+
+    return { healthy: true, responseTime };
+
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    return { healthy: false, error, responseTime };
   }
 }
 
-export async function waitForSupabase(maxRetries = 10, delay = 1000) {
+/**
+ * Wait for Supabase to become healthy with retry logic
+ */
+export async function waitForSupabase(maxRetries = 10, delay = 1000): Promise<boolean> {
   for (let i = 0; i < maxRetries; i++) {
-    try {
-      const health = await checkSupabaseHealth();
-      if (health.healthy) {
-        console.log('Supabase is ready!');
-        return true;
-      }
-    } catch (error) {
-      console.log(`Supabase health check failed: ${error}`);
+    const health = await checkSupabaseHealth();
+
+    if (health.healthy) {
+      return true;
     }
-    
-    console.log(`Waiting for Supabase... (${i + 1}/${maxRetries})`);
-    await new Promise(resolve => setTimeout(resolve, delay));
+
+    if (i < maxRetries - 1) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
-  
-  console.error('Supabase failed to become ready after', maxRetries, 'attempts');
+
+  console.error('Supabase connection failed after all retries');
   return false;
+}
+
+/**
+ * Test specific table access
+ */
+export async function testTableAccess(tableName: string): Promise<SupabaseHealth> {
+  const startTime = Date.now();
+
+  try {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+
+    const responseTime = Date.now() - startTime;
+
+    if (error) {
+      return { healthy: false, error, responseTime };
+    }
+
+    return { healthy: true, responseTime };
+
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    return { healthy: false, error, responseTime };
+  }
 }

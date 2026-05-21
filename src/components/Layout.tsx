@@ -5,6 +5,7 @@ import { Heart, MessageCircle, User, Compass, Bell, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 import { useThemeStore } from '../stores/themeStore';
+import { useCurrentTheme } from '../stores/colorThemeStore';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -39,7 +40,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const hideNav = isConversationPage || isSystemMessagePage;
 
   const accountType = (profile as any)?.account_type || (profile as any)?.subscription || 'free';
-  const theme = getTheme(accountType);
+  const theme = useCurrentTheme(accountType);
 
   const navItems = [
     {

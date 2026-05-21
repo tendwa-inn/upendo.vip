@@ -55,17 +55,14 @@ class WordFilterService {
   private filteredWords: FilteredWord[] = [];
 
   async loadFilteredWords() {
-    console.log('[DEBUG] wordFilterService: Loading filtered words...');
     try {
       const { data, error } = await supabase.from('word_filter').select('*');
       if (error) {
         console.error('Error loading filtered words:', error);
-        // Don't throw, just log and continue with empty array
         this.filteredWords = [];
         return;
       }
       this.filteredWords = data || [];
-      console.log('[DEBUG] wordFilterService: Loaded', this.filteredWords.length, 'words.', this.filteredWords);
     } catch (error) {
       console.error('Exception loading filtered words:', error);
       this.filteredWords = [];
@@ -81,9 +78,7 @@ class WordFilterService {
   }
 
   async checkMessage(message: string): Promise<FilteredWord | null> {
-    console.log(`[DEBUG] wordFilterService: Checking message: "${message}"`);
     if (this.filteredWords.length === 0) {
-      console.log('[DEBUG] wordFilterService: Filtered words not loaded, loading now...');
       await this.loadFilteredWords();
     }
 
@@ -91,17 +86,14 @@ class WordFilterService {
     for (const word of words) {
       const found = this.filteredWords.find(fw => fw.word.toLowerCase() === word);
       if (found) {
-        console.log(`[DEBUG] wordFilterService: Found filtered word: "${word}"`);
         return found;
       }
     }
-    console.log('[DEBUG] wordFilterService: No filtered words found in message.');
     return null;
   }
 
   // Admin methods
   async getFilteredWordsWithActions(): Promise<FilteredWord[]> {
-    console.log('Fetching filtered words with actions...');
     const { data, error } = await supabase
       .from('word_filter')
       .select(`
@@ -120,12 +112,10 @@ class WordFilterService {
       throw error;
     }
 
-    console.log('Filtered words data:', data);
     return data || [];
   }
 
   async getFlaggedContent(): Promise<FlaggedContent[]> {
-    console.log('[DEBUG] getFlaggedContent: Fetching...');
     const { data, error } = await supabase
       .from('flagged_content')
       .select(`
@@ -136,11 +126,10 @@ class WordFilterService {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('[DEBUG] getFlaggedContent: Supabase error:', error);
+      console.error('Error fetching flagged content:', error);
       throw error;
     }
 
-    console.log('[DEBUG] getFlaggedContent: Raw data received:', data);
     return data || [];
   }
 

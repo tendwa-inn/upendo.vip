@@ -12,7 +12,13 @@ const usePresenceStore = create<PresenceState>((set) => ({
   onlineUsers: {},
   initializePresence: () => {
     const currentUser = useAuthStore.getState().user;
-    if (!currentUser || currentUser.ghost_mode_enabled) return;
+    const currentProfile = useAuthStore.getState().profile;
+    if (!currentUser || !currentProfile || currentProfile.ghost_mode_enabled) return;
+
+    // Check if presence is already initialized
+    if ((window as any).presenceChannel) {
+      return;
+    }
 
     const channel = supabase.channel('online-users', {
       config: {
@@ -22,6 +28,7 @@ const usePresenceStore = create<PresenceState>((set) => ({
       },
     });
 
+    // Set up presence event listeners BEFORE subscribing
     channel
       .on('presence', { event: 'sync' }, () => {
         const newState = channel.presenceState();
@@ -35,12 +42,18 @@ const usePresenceStore = create<PresenceState>((set) => ({
             .update({ last_active_at: new Date().toISOString() })
             .eq('id', currentUser.id);
         }
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({ online_at: new Date().toISOString() });
-        }
       });
+
+    // Subscribe to the channel after setting up all listeners
+    channel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        try {
+          await channel.track({ online_at: new Date().toISOString() });
+        } catch (error) {
+          console.error('Error tracking presence:', error);
+        }
+      }
+    });
 
     // Set up a function to update last_active periodically
     const interval = setInterval(async () => {

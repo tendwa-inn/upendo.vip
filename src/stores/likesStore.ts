@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 import { User } from '../types';
 import { useAuthStore } from './authStore';
+import { blockService } from '../services/blockService';
 
 interface LikesState {
   likedUserIds: Set<string>; // <-- NEW: For quick lookups
@@ -41,15 +42,30 @@ export const useLikesStore = create<LikesState>((set, get) => ({
       return;
     }
 
-    const ids = new Set(data.map(like => like.liked_id));
+    const ids = new Set(data?.map(like => like.liked_id) || []);
     set({ likedUserIds: ids });
   },
 
   addLikedUser: (userId: string) => {
-    set(state => ({ likedUserIds: new Set(state.likedUserIds).add(userId) }));
+    set(state => {
+      // Safely convert to Set
+      const currentLikedUserIds =
+        state.likedUserIds instanceof Set
+          ? state.likedUserIds
+          : new Set(
+              Array.isArray(state.likedUserIds)
+                ? state.likedUserIds
+                : []
+            );
+
+      const updated = new Set(currentLikedUserIds);
+      updated.add(userId);
+
+      return { likedUserIds: updated };
+    });
   },
 
-  fetchUsersWhoLikedMe: async () => {
+  fetchUsersWhoLikedMe: async (userId: string) => {
     const currentUser = useAuthStore.getState().user;
     if (!currentUser) return;
 
@@ -72,11 +88,30 @@ export const useLikesStore = create<LikesState>((set, get) => ({
 
     const likerIds = likes.map(l => l.liker_id);
 
+    // Filter out blocked users, matched users, and disliked (unmatched) users
+    const [blockedIds, matchedRes, dislikedRes] = await Promise.all([
+      blockService.getBlockedUserIds(currentUser.id),
+      supabase.from('matches').select('user1_id, user2_id').or(`user1_id.eq.${currentUser.id},user2_id.eq.${currentUser.id}`),
+      supabase.from('dislikes').select('disliked_user_id').eq('user_id', currentUser.id)
+    ]);
+    const matchedIds = new Set(
+      (matchedRes.data || []).flatMap(m =>
+        m.user1_id === currentUser.id ? [m.user2_id] : [m.user1_id]
+      )
+    );
+    const dislikedIds = new Set((dislikedRes.data || []).map(d => d.disliked_user_id));
+    const filteredLikerIds = likerIds.filter(id => !blockedIds.includes(id) && !matchedIds.has(id) && !dislikedIds.has(id));
+
+    if (filteredLikerIds.length === 0) {
+      set({ usersWhoLikedMe: [] });
+      return;
+    }
+
     // Get the full profiles of those users
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
       .select('*')
-      .in('id', likerIds)
+      .in('id', filteredLikerIds)
       .abortSignal(new AbortController().signal);
 
     if (profilesError) {
@@ -127,21 +162,15 @@ export const useLikesStore = create<LikesState>((set, get) => ({
         { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
         (payload) => {
           if ((payload.new as any).type === 'new_like') {
-            console.log('New like notification received!', payload);
             get().fetchUsersWhoLikedMe();
             set({ hasNewLikes: true });
           }
           if ((payload.new as any).type === 'system' && (payload.new as any).message?.includes('strike')) {
-            console.log('Strike notification detected, refreshing like lists...');
             get().fetchUsersWhoLikedMe();
           }
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('Subscribed to new likes listener!');
-        }
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);

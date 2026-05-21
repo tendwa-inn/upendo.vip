@@ -26,7 +26,9 @@ export interface User {
   swipeCount?: number;
   replyRate?: number;
   lastActive: Date;
+  last_active_at?: Date;
   online: boolean;
+  ghost_mode_enabled?: boolean;
   preferences: {
     ageRange: [number, number];
     distance: number;
@@ -42,6 +44,7 @@ export interface User {
   drinking?: 'never' | 'occasionally' | 'socially' | 'regularly';
   smoking?: 'never' | 'occasionally' | 'socially' | 'regularly';
   firstDate?: 'at-home' | 'at-the-gym' | 'at-the-club' | 'on-a-date';
+  onboarding_completed?: boolean;
 }
 
 export interface SwipeCard {
@@ -66,7 +69,9 @@ export interface Message {
   content: string;
   timestamp: Date;
   isRead: boolean;
-  type: 'text' | 'image';
+  type: 'text' | 'image' | 'gif' | 'sticker';
+  reply_to?: string;
+  reply_content?: string;
 }
 
 export interface Subscription {

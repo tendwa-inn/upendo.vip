@@ -27,7 +27,7 @@ BEGIN
   ) INTO v_already_applied;
   
   IF v_already_applied THEN
-    RAISE EXCEPTION 'You have already used this promo code.';
+    RAISE EXCEPTION 'Sorry, you cannot enter the same promo code twice, buddy.';
   END IF;
 
   -- Get the duration of the promo code

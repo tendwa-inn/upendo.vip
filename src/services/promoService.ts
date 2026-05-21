@@ -13,8 +13,7 @@ export const promoService = {
     if (promo.type) dbPromo.type = promo.type;
     if (promo.durationDays !== undefined && promo.durationDays !== null) dbPromo.duration_days = promo.durationDays;
     if (promo.maxUses !== undefined && promo.maxUses !== null) dbPromo.max_uses = promo.maxUses;
-    // effect field is not in current table schema, so don't map it
-    // if (promo.effect) dbPromo.effect = promo.effect;
+    if (promo.effect && Object.keys(promo.effect).length > 0) dbPromo.effect = promo.effect;
     // expires_at field - auto-calculate from durationDays if provided
     if (promo.durationDays !== undefined && promo.durationDays !== null) {
       dbPromo.expires_at = new Date(Date.now() + promo.durationDays * 24 * 60 * 60 * 1000).toISOString();
@@ -35,9 +34,7 @@ export const promoService = {
       timesUsed: dbPromo.times_used || 0,
       createdAt: new Date(dbPromo.created_at),
       expiresAt: dbPromo.expires_at ? new Date(dbPromo.expires_at) : undefined,
-      // effect field is not in current table schema
-      // effect: dbPromo.effect || {},
-      effect: {}, // Default empty object since effect column doesn't exist
+      effect: dbPromo.effect || {},
       isArchived: dbPromo.is_archived || false,
     };
   },
@@ -87,13 +84,26 @@ export const promoService = {
   // Create a new promo code
   async createPromoCode(promoData: Partial<PromoCode>): Promise<PromoCode> {
     const dbPromo = promoService.mapToDbFormat(promoData);
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('promo_codes')
       .insert([dbPromo])
       .select()
       .single();
 
-    if (error) throw error;
+    // If effect column doesn't exist in DB, retry without it
+    if (error && dbPromo.effect && error.message?.includes('effect')) {
+      const { effect, ...dbPromoWithoutEffect } = dbPromo;
+      const retry = await supabase
+        .from('promo_codes')
+        .insert([dbPromoWithoutEffect])
+        .select()
+        .single();
+      if (retry.error) throw retry.error;
+      data = retry.data;
+    } else if (error) {
+      throw error;
+    }
+
     return promoService.mapFromDbFormat(data);
   },
 
@@ -191,6 +201,26 @@ export const promoService = {
           .update({ can_view_profiles_expires_at: null })
           .in('id', userIds);
         if (updateError) throw updateError;
+      }
+    } else if (promo.type === 'theme') {
+      const userIds = userPromos.map(up => up.user_id);
+      if (userIds.length > 0) {
+        const promoEffect = promo.effect || {};
+        const themeId = promoEffect.theme_id;
+        // Only clear if user's current theme matches this promo's theme
+        for (const uid of userIds) {
+          const { data: userProfile } = await supabaseAuthed
+            .from('profiles')
+            .select('selected_theme_id')
+            .eq('id', uid)
+            .single();
+          if (userProfile?.selected_theme_id === themeId) {
+            await supabaseAuthed
+              .from('profiles')
+              .update({ selected_theme_id: null })
+              .eq('id', uid);
+          }
+        }
       }
     }
 

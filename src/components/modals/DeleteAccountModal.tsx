@@ -114,7 +114,7 @@ const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ onClose, onDele
                   type="text"
                   value={confirmText}
                   onChange={e => setConfirmText(e.target.value)}
-                  placeholder="Type DELETE"
+                  placeholder={t('deleteAccount.placeholder')}
                   className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500/20 transition-all mb-5"
                 />
 

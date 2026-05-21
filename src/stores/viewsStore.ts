@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabaseClient';
 import { User } from '../types';
 import { useAuthStore } from './authStore';
+import { blockService } from '../services/blockService';
 
 interface ViewsState {
   usersWhoViewedMe: User[];
@@ -14,7 +15,7 @@ export const useViewsStore = create<ViewsState>((set) => ({
   usersWhoViewedMe: [],
   hasNewViews: false,
 
-  fetchUsersWhoViewedMe: async () => {
+  fetchUsersWhoViewedMe: async (userId: string) => {
     const currentUser = useAuthStore.getState().user;
     if (!currentUser) return;
 
@@ -35,11 +36,20 @@ export const useViewsStore = create<ViewsState>((set) => ({
 
     const viewerIds = views.map(v => v.viewer_id);
 
+    // Filter out blocked users
+    const blockedIds = await blockService.getBlockedUserIds(currentUser.id);
+    const filteredViewerIds = viewerIds.filter(id => !blockedIds.includes(id));
+
+    if (filteredViewerIds.length === 0) {
+      set({ usersWhoViewedMe: [] });
+      return;
+    }
+
     // Get the full profiles of those users
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
       .select('*')
-      .in('id', viewerIds);
+      .in('id', filteredViewerIds);
 
     if (profilesError) {
       console.error('Error fetching viewer profiles:', profilesError);

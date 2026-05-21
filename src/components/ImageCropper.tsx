@@ -2,6 +2,8 @@ import React, { useState, useRef, useCallback } from 'react';
 import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { X, Check, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 interface ImageCropperProps {
   imageUrl: string;
@@ -23,6 +25,7 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
   const [scale, setScale] = useState(1);
   const [rotate, setRotate] = useState(0);
   const imgRef = useRef<HTMLImageElement>(null);
+  const { t } = useTranslation();
 
   const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
@@ -118,7 +121,7 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
 
   const handleCropComplete = async () => {
     if (!completedCrop || !imgRef.current) {
-      toast.error('Please select a crop area');
+      toast.error(t('imageCrop.selectArea'));
       return;
     }
 
@@ -131,7 +134,7 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
       onCropComplete(croppedImageUrl);
     } catch (error) {
       console.error('Error cropping image:', error);
-      toast.error('Failed to crop image');
+      toast.error(t('imageCrop.cropFailed'));
     }
   };
 
@@ -170,7 +173,7 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
             <button
               onClick={() => handleScaleChange(-0.1)}
               className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
-              title="Zoom Out"
+              title={t('imageCrop.zoomOut')}
             >
               <ZoomOut className="w-4 h-4" />
             </button>
@@ -178,14 +181,14 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
             <button
               onClick={() => handleScaleChange(0.1)}
               className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
-              title="Zoom In"
+              title={t('imageCrop.zoomIn')}
             >
               <ZoomIn className="w-4 h-4" />
             </button>
             <button
               onClick={handleRotate}
               className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
-              title="Rotate"
+              title={t('imageCrop.rotate')}
             >
               <RotateCw className="w-4 h-4" />
             </button>

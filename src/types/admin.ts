@@ -95,7 +95,7 @@ export interface PromoCode {
   code: string;
   name: string;
   description: string;
-  type: 'message_requests' | 'popularity_boost' | 'pro_account' | 'vip_account' | 'unlimited_swipes' | 'limited_swipes' | 'profile_views';
+  type: 'message_requests' | 'popularity_boost' | 'pro_account' | 'vip_account' | 'unlimited_swipes' | 'limited_swipes' | 'profile_views' | 'theme' | 'flares';
   durationDays: number | null;
   maxUses: number | null;
   timesUsed: number;

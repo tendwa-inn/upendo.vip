@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Phone } from 'lucide-react';
+import { MapPin, Phone, Heart } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 
 const ConnectionCard = ({ connection, onImageClick, onConnect }) => {
@@ -11,19 +11,13 @@ const ConnectionCard = ({ connection, onImageClick, onConnect }) => {
   const bioRef = useRef<HTMLParagraphElement>(null);
   const { profile, isPro, isVip } = useAuthStore();
 
+  const isUserApplied = connection.is_user_applied;
 
   useEffect(() => {
     if (bioRef.current) {
-      // Check if the text is visually truncated (scrollHeight > clientHeight)
       setIsBioTruncated(bioRef.current.scrollHeight > bioRef.current.clientHeight);
     }
   }, [connection.bio]);
-
-  const handleConnect = () => {
-    const message = connection.whatsapp_message || `Hi ${connection.name}, I found you on Upendo and would like to connect with you!`;
-    const whatsappUrl = `https://wa.me/${connection.whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
-  };
 
   return (
     <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 flex flex-col">
@@ -85,15 +79,26 @@ const ConnectionCard = ({ connection, onImageClick, onConnect }) => {
       <button
         onClick={onConnect}
         className={`w-full mt-auto py-2 rounded-full font-bold transition-all duration-300 hover:scale-105 flex items-center justify-center gap-2 ${
-          isVip 
-            ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-lg shadow-amber-400/20 hover:from-amber-600 hover:to-orange-600'
-            : isPro
-              ? 'bg-gradient-to-r from-[#ff7f50] to-[#ff5e57] text-white shadow-lg shadow-orange-500/20 hover:from-[#ff8c66] hover:to-[#ff6a62]'
-              : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-lg shadow-pink-500/20 hover:from-pink-700 hover:to-pink-600'
+          isUserApplied
+            ? 'bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/20 hover:from-purple-700 hover:to-pink-600'
+            : isVip
+              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-black shadow-lg shadow-amber-400/20 hover:from-amber-600 hover:to-orange-600'
+              : isPro
+                ? 'bg-gradient-to-r from-[#ff7f50] to-[#ff5e57] text-white shadow-lg shadow-orange-500/20 hover:from-[#ff8c66] hover:to-[#ff6a62]'
+                : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-lg shadow-pink-500/20 hover:from-pink-700 hover:to-pink-600'
         }`}
       >
-        <Phone className="w-5 h-5" />
-        {t('connect')}
+        {isUserApplied ? (
+          <>
+            <Heart className="w-5 h-5" />
+            {t('connect')}
+          </>
+        ) : (
+          <>
+            <Phone className="w-5 h-5" />
+            {t('connect')}
+          </>
+        )}
       </button>
     </div>
   );

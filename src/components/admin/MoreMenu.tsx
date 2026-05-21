@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Flag, Funnel, UserX, LogOut, User, Users as UsersIcon } from 'lucide-react';
+import { Flag, Funnel, UserX, LogOut, User, Users as UsersIcon, Megaphone } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import toast from 'react-hot-toast';
 
@@ -8,6 +8,7 @@ const otherNavItems = [
   { path: '/admin/connections', icon: UsersIcon, label: 'Connections' },
   { path: '/admin/reports', icon: Flag, label: 'Reports' },
   { path: '/admin/word-filter', icon: Funnel, label: 'Word Filter' },
+  { path: '/admin/ads', icon: Megaphone, label: 'Ad Manager' },
   { path: '/admin/dormant', icon: UserX, label: 'Dormant' },
 ];
 

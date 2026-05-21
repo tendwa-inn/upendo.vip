@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { useColorThemeStore } from '../stores/colorThemeStore';
 import { supabase } from '../lib/supabaseClient';
 import { motion } from 'framer-motion';
-import { Ticket, Crown, Shield, XCircle } from 'lucide-react';
+import { Ticket, Crown, Shield, XCircle, Palette } from 'lucide-react';
 import { promoService } from '../services/promoService';
 import ConfirmationModal from './modals/ConfirmationModal';
+import { toast } from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 const SavedPromos = () => {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const [promos, setPromos] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,18 +57,19 @@ const SavedPromos = () => {
         const { error: rpcError } = await supabase.rpc('revert_subscription_to_free');
         if (rpcError) {
           console.error('Error reverting subscription:', rpcError);
-          toast.error('Failed to update your subscription status. Please try again.');
+          toast.error(t('promo.updateFailed'));
           // Do not proceed with deletion if the RPC fails
           setIsConfirmModalOpen(false);
           setPromoToCancel(null);
           return;
         }
       } else if (promo && promo.promo_codes.type === 'profile_views') {
-        // This part can still be a direct update if the RLS allows it, or it could be another RPC
-        // For now, we assume the updateUserProfile is safe for non-subscription fields
-        await useAuthStore.getState().updateUserProfile({ 
-          canViewProfilesExpiresAt: null as any
+        await useAuthStore.getState().updateUserProfile({
+          can_view_profiles_expires_at: null
         });
+      } else if (promo && promo.promo_codes.type === 'theme') {
+        // Clear the theme selection — revert to tier default
+        useColorThemeStore.getState().resetToDefault(user?.id);
       }
 
       // Delete the promo from the database
@@ -75,9 +80,14 @@ const SavedPromos = () => {
         const promoName = promo.promo_codes.name;
         const promoType = promo.promo_codes.type;
         const accountType = promoType === 'pro_account' ? 'Pro' : promoType === 'vip_account' ? 'VIP' : 'Premium';
-        const messageText = promoType === 'profile_views' 
-          ? `Your "${promoName}" promotion has been removed.`
-          : `Your ${accountType} promotion "${promoName}" has been removed. Your account has been downgraded.`;
+        let messageText: string;
+        if (promoType === 'profile_views') {
+          messageText = `Your "${promoName}" promotion has been removed.`;
+        } else if (promoType === 'theme') {
+          messageText = `Your "${promoName}" theme promotion has been removed. Your theme has been reset to default.`;
+        } else {
+          messageText = `Your ${accountType} promotion "${promoName}" has been removed. Your account has been downgraded.`;
+        }
 
         await supabase.from('notifications').insert({
           user_id: user.id,
@@ -123,10 +133,12 @@ const SavedPromos = () => {
 
   const getPromoIcon = (type) => {
     switch (type) {
-      case 'VIP':
+      case 'vip_account':
         return <Crown className="w-6 h-6 text-yellow-400" />;
-      case 'PRO':
+      case 'pro_account':
         return <Shield className="w-6 h-6 text-blue-400" />;
+      case 'theme':
+        return <Palette className="w-6 h-6 text-purple-400" />;
       default:
         return <Ticket className="w-6 h-6 text-green-400" />;
     }
@@ -162,7 +174,7 @@ const SavedPromos = () => {
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
         onConfirm={handleCancel}
-        title="Cancel Promotion"
+        title={t('promo.cancelPromotion')}
         message="Are you sure you want to remove this promotion? This cannot be undone."
       />
     </motion.div>

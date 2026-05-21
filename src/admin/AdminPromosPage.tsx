@@ -1,50 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Title,
-  Table,
-  TableHead,
-  TableRow,
-  TableHeaderCell,
-  TableBody,
-  TableCell,
-  Button,
-  Tab,
-  TabList,
-  TabGroup,
-  TabPanel,
-  TabPanels,
-  Badge,
-  Text,
-  Dialog,
-  DialogPanel,
-  Select,
-  SelectItem,
-  TextInput,
-  NumberInput
-} from '@tremor/react';
+import { Switch } from '@tremor/react';
 import { promoService } from '../services/promoService';
 import { PromoCode } from '../types/admin';
-import { PlusCircleIcon, CheckCircleIcon, XCircleIcon, InformationCircleIcon, TrashIcon } from '@heroicons/react/24/solid';
+import { ALL_THEMES, THEME_MAP } from '../styles/theme';
+import { Plus, Trash2, X, Ticket, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Portal from '../components/Portal';
-import Tooltip from '../components/Tooltip';
 import ConfirmationModal from '../components/modals/ConfirmationModal';
+import { useTranslation } from 'react-i18next';
 
 const AdminPromosPage: React.FC = () => {
+  const { t } = useTranslation();
   const [activePromos, setActivePromos] = useState<PromoCode[]>([]);
   const [expiredPromos, setExpiredPromos] = useState<PromoCode[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; promo: PromoCode | null }>({ isOpen: false, promo: null });
-  const [newPromo, setNewPromo] = useState<Partial<PromoCode>>({
-    type: 'message_requests',
-    durationDays: null,
-  });
+  const [activeTab, setActiveTab] = useState<'active' | 'expired'>('active');
+  const [newPromo, setNewPromo] = useState<any>({ type: 'message_requests', durationDays: null });
 
-  useEffect(() => {
-    loadPromos();
-  }, []);
+  useEffect(() => { loadPromos(); }, []);
 
   const loadPromos = async () => {
     try {
@@ -52,235 +26,160 @@ const AdminPromosPage: React.FC = () => {
       const { active, expired } = await promoService.getPromoCodes();
       setActivePromos(active);
       setExpiredPromos(expired);
-    } catch (error) {
-      toast.error('Failed to load promo codes');
-      console.error('Error loading promos:', error);
-    } finally {
-      setLoading(false);
-    }
+    } catch { toast.error(t('admin.promos.loadFailed')); }
+    finally { setLoading(false); }
   };
 
   const handleCreatePromo = async () => {
     try {
-      if (!newPromo.code) {
-        newPromo.code = generateRandomCode();
-      }
-      const promoToCreate = { ...newPromo, durationDays: newPromo.durationDays || 30 }; // Add default value
-
-      await promoService.createPromoCode(promoToCreate);
-      toast.success('Promo code created successfully');
-      setIsDialogOpen(false);
-      setNewPromo({ type: 'message_requests', maxUses: 100, durationDays: null });
+      if (!newPromo.code) newPromo.code = Math.random().toString(36).substring(2, 10).toUpperCase();
+      await promoService.createPromoCode({ ...newPromo, durationDays: newPromo.durationDays || 30 });
+      toast.success(t('admin.promos.created'));
+      setShowModal(false);
+      setNewPromo({ type: 'message_requests', maxUses: 100, durationDays: null, effect: {} });
       loadPromos();
-    } catch (error) {
-      toast.error('Failed to create promo code');
-      console.error('Error creating promo:', error);
+    } catch (e: any) { toast.error(`Failed: ${e?.message || 'Unknown error'}`); }
+  };
+
+  const formatPromoType = (promo: PromoCode) => {
+    if (promo.type === 'theme') {
+      const themeId = promo.effect?.theme_id;
+      return themeId ? `Theme: ${THEME_MAP[themeId]?.name || themeId}` : 'Theme';
     }
+    return promo.type.replace(/_/g, ' ');
   };
 
-  const generateRandomCode = () => {
-    return Math.random().toString(36).substring(2, 10).toUpperCase();
-  };
-
-  const handleInputChange = (key: keyof PromoCode, value: any) => {
-    setNewPromo(prev => ({ ...prev, [key]: value }));
-  };
-
-
-
-  const handleDeleteClick = (promo: PromoCode) => {
-    setDeleteModal({ isOpen: true, promo });
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deleteModal.promo) return;
-
-    try {
-      await promoService.deletePromoCode(deleteModal.promo.id);
-      toast.success('Promo code deleted successfully. Users have been reverted.');
-      setDeleteModal({ isOpen: false, promo: null });
-      loadPromos();
-    } catch (error) {
-      toast.error('Failed to delete promo code');
-      console.error('Error deleting promo:', error);
-    }
-  };
-
-  const handleCancelDelete = () => {
-    setDeleteModal({ isOpen: false, promo: null });
-  };
+  const currentList = activeTab === 'active' ? activePromos : expiredPromos;
+  const inputClasses = "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-pink-500/50 focus:ring-2 focus:ring-pink-500/20 transition-all";
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#2b0f16] to-[#120508] text-white p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Promo Code Management</h1>
-        <Button icon={PlusCircleIcon} onClick={() => setIsDialogOpen(true)}>Add Promo Code</Button>
+    <div className="animate-fade-in">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-400 via-purple-400 to-indigo-400 bg-clip-text text-transparent">Promo Codes</h1>
+          <p className="text-gray-400 mt-1 text-sm">{activePromos.length} active, {expiredPromos.length} expired</p>
+        </div>
+        <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-medium shadow-lg shadow-pink-500/25 transition-all duration-300">
+          <Plus size={18} /> Add Promo
+        </button>
       </div>
-      
-      <TabGroup>
-        <TabList>
-          <Tab>Active Promos ({activePromos.length})</Tab>
-          <Tab>Expired Promos ({expiredPromos.length})</Tab>
-        </TabList>
-        <TabPanels>
-          <TabPanel>
-            <Card className="mt-6">
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableHeaderCell>Code</TableHeaderCell>
-                    <TableHeaderCell>Type</TableHeaderCell>
-                    <TableHeaderCell>Uses (Used/Max)</TableHeaderCell>
-                    <TableHeaderCell>Expires At</TableHeaderCell>
-                    <TableHeaderCell>Actions</TableHeaderCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {activePromos.map(promo => (
-                    <TableRow key={promo.id}>
-                      <TableCell><Badge color="blue">{promo.code}</Badge></TableCell>
-                      <TableCell>{promo.type.replace('_', ' ')}</TableCell>
-                      <TableCell>{promo.timesUsed} / {promo.maxUses ?? '∞'}</TableCell>
-                      <TableCell>{promo.expiresAt ? new Date(promo.expiresAt).toLocaleDateString() : 'No expiry'}</TableCell>
-                      <TableCell>
-                        <Button
-                          size="xs"
-                          variant="light"
-                          color="red"
-                          icon={TrashIcon}
-                          onClick={() => handleDeleteClick(promo)}
-                        >
-                          Delete
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          </TabPanel>
-          <TabPanel>
-            <Card className="mt-6">
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableHeaderCell>Code</TableHeaderCell>
-                    <TableHeaderCell>Type</TableHeaderCell>
-                    <TableHeaderCell>Uses (Used/Max)</TableHeaderCell>
-                    <TableHeaderCell>Expired At</TableHeaderCell>
-                    <TableHeaderCell>Actions</TableHeaderCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {expiredPromos.map(promo => (
-                    <TableRow key={promo.id}>
-                      <TableCell><Badge>{promo.code}</Badge></TableCell>
-                      <TableCell>{promo.type.replace('_', ' ')}</TableCell>
-                      <TableCell>{promo.timesUsed} / {promo.maxUses ?? '∞'}</TableCell>
-                      <TableCell>{promo.expiresAt ? new Date(promo.expiresAt).toLocaleDateString() : 'No expiry'}</TableCell>
-                      <TableCell>
-                        <Button
-                          size="xs"
-                          variant="light"
-                          color="red"
-                          icon={TrashIcon}
-                          onClick={() => handleDeleteClick(promo)}
-                        >
-                          Delete
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          </TabPanel>
-        </TabPanels>
-      </TabGroup>
 
-      {isDialogOpen && (
-        <Portal>
-          <Dialog open={isDialogOpen} onClose={() => setIsDialogOpen(false)} static={true}>
-            <DialogPanel className="bg-[#3a1a22] p-6 rounded-lg shadow-xl z-50 text-white">
-              <Title className="mb-4 text-white">Add New Promo Code</Title>
-              <div className="space-y-4">
-                <TextInput 
-                  placeholder="Promo Code Name"
-                  onValueChange={(value) => handleInputChange('name', value)}
-                />
-                <TextInput 
-                  placeholder="Description"
-                  onValueChange={(value) => handleInputChange('description', value)}
-                />
-                <div className="flex items-center space-x-2">
-                  <TextInput 
-                    placeholder="Enter code or leave blank to generate"
-                    value={newPromo.code || ''}
-                    onValueChange={(value) => handleInputChange('code', value)}
-                  />
-                  <Button onClick={() => handleInputChange('code', generateRandomCode())}>Generate</Button>
-                </div>
-                <div className="relative">
-                  <select 
-                    className="w-full appearance-none bg-[#3a1a22] border border-white/20 rounded-md py-2 px-3 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
-                    value={newPromo.type}
-                    onChange={(e) => handleInputChange('type', e.target.value)}
-                  >
-                    <option value="message_requests">Message Requests</option>
-                    <option value="popularity_boost">Popularity Boost</option>
-                    <option value="pro_account">Pro Account</option>
-                    <option value="vip_account">VIP Account</option>
-                    <option value="unlimited_swipes">Unlimited Swipes</option>
-                    <option value="limited_swipes">Limited Swipes (20-100)</option>
-                    <option value="profile_views">Profile Views (Days)</option>
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
-                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                  </div>
-                </div>
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6">
+        <button onClick={() => setActiveTab('active')} className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${activeTab === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'}`}>
+          Active ({activePromos.length})
+        </button>
+        <button onClick={() => setActiveTab('expired')} className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${activeTab === 'expired' ? 'bg-gray-500/20 text-gray-400 border border-gray-500/30' : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'}`}>
+          Expired ({expiredPromos.length})
+        </button>
+      </div>
 
+      {/* Table */}
+      <div className="relative overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider px-6 py-4">Code</th>
+                <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider px-6 py-4">Type</th>
+                <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider px-6 py-4">Uses</th>
+                <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider px-6 py-4">Expires</th>
+                <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider px-6 py-4">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {currentList.length === 0 ? (
+                <tr><td colSpan={5} className="px-6 py-12 text-center"><Ticket size={40} className="mx-auto mb-3 text-gray-600" /><p className="text-gray-500">No {activeTab} promos</p></td></tr>
+              ) : currentList.map(promo => (
+                <tr key={promo.id} className="hover:bg-white/5 transition-colors">
+                  <td className="px-6 py-3"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">{promo.code}</span></td>
+                  <td className="px-6 py-3 text-sm text-gray-300">{formatPromoType(promo)}</td>
+                  <td className="px-6 py-3 text-sm text-gray-300">{promo.timesUsed} / {promo.maxUses ?? '∞'}</td>
+                  <td className="px-6 py-3 text-sm text-gray-300">{promo.expiresAt ? new Date(promo.expiresAt).toLocaleDateString() : 'No expiry'}</td>
+                  <td className="px-6 py-3">
+                    <button onClick={() => setDeleteModal({ isOpen: true, promo })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
+                      <Trash2 size={12} /> Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-                <div className="relative">
-                  <select
-                    className="w-full appearance-none bg-[#3a1a22] border border-white/20 rounded-md py-2 px-3 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
-                    value={newPromo.durationDays || ''}
-                    onChange={(e) => handleInputChange('durationDays', parseInt(e.target.value))}
-                  >
-                    <option value="">Select Expiry Duration</option>
-                    <option value="0.0417">1 Hour</option>
-                    <option value="1">1 Day</option>
-                    <option value="7">1 Week</option>
-                    <option value="14">2 Weeks</option>
-                    <option value="30">1 Month</option>
-                    <option value="365">1 Year</option>
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
-                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                  </div>
-                  <Tooltip content="When this promo code expires (1 hour, 1 day, 1 week, etc.)">
-                  <InformationCircleIcon className="h-5 w-5 text-white/60 absolute right-10 top-2" />
-                </Tooltip>
-                </div>
+      {/* Create Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-gray-900/95 backdrop-blur-xl rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-white">Create Promo Code</h3>
+                <p className="text-sm text-gray-400">Set up a new promotional code</p>
               </div>
-              <div className="mt-6 flex justify-end space-x-2">
-                <Button icon={XCircleIcon} variant="secondary" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                <Button icon={CheckCircleIcon} onClick={handleCreatePromo}>Create Promo Code</Button>
+              <button onClick={() => setShowModal(false)} className="p-2 rounded-lg hover:bg-white/10 text-gray-400"><X size={18} /></button>
+            </div>
+            <div className="space-y-4">
+              <div><label className="block text-sm text-gray-400 mb-1.5">Name</label><input placeholder="Promo name" className={inputClasses} onChange={e => setNewPromo(p => ({ ...p, name: e.target.value }))} /></div>
+              <div><label className="block text-sm text-gray-400 mb-1.5">Description</label><input placeholder="Description" className={inputClasses} onChange={e => setNewPromo(p => ({ ...p, description: e.target.value }))} /></div>
+              <div className="flex gap-2">
+                <div className="flex-1"><label className="block text-sm text-gray-400 mb-1.5">Code</label><input placeholder="Auto-generate" value={newPromo.code || ''} className={inputClasses} onChange={e => setNewPromo(p => ({ ...p, code: e.target.value }))} /></div>
+                <button onClick={() => setNewPromo(p => ({ ...p, code: Math.random().toString(36).substring(2, 10).toUpperCase() }))} className="self-end px-4 py-3 rounded-xl bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10 text-sm transition-colors">Generate</button>
               </div>
-            </DialogPanel>
-          </Dialog>
-        </Portal>
+              <div><label className="block text-sm text-gray-400 mb-1.5">Type</label>
+                <select className={inputClasses} value={newPromo.type} onChange={e => setNewPromo(p => ({ ...p, type: e.target.value }))}>
+                  <option value="message_requests">Message Requests</option>
+                  <option value="popularity_boost">Popularity Boost</option>
+                  <option value="pro_account">Pro Account</option>
+                  <option value="vip_account">VIP Account</option>
+                  <option value="unlimited_swipes">Unlimited Swipes</option>
+                  <option value="limited_swipes">Limited Swipes</option>
+                  <option value="profile_views">Profile Views</option>
+                  <option value="theme">Theme</option>
+                  <option value="flares">Flares</option>
+                </select>
+              </div>
+              <div><label className="block text-sm text-gray-400 mb-1.5">Duration</label>
+                <select className={inputClasses} value={newPromo.durationDays || ''} onChange={e => setNewPromo(p => ({ ...p, durationDays: parseInt(e.target.value) }))}>
+                  <option value="">Select duration</option>
+                  <option value="0.0417">1 Hour</option>
+                  <option value="1">1 Day</option>
+                  <option value="7">1 Week</option>
+                  <option value="14">2 Weeks</option>
+                  <option value="30">1 Month</option>
+                  <option value="365">1 Year</option>
+                </select>
+              </div>
+              {newPromo.type === 'limited_swipes' && (
+                <div><label className="block text-sm text-gray-400 mb-1.5">Bonus Swipes</label><input type="number" min={1} placeholder="e.g. 40" className={inputClasses} onChange={e => setNewPromo(p => ({ ...p, effect: { ...p.effect, swipe_count: parseInt(e.target.value) || 0 } }))} /></div>
+              )}
+              {newPromo.type === 'message_requests' && (
+                <div><label className="block text-sm text-gray-400 mb-1.5">Extra Requests</label><input type="number" min={1} placeholder="e.g. 10" className={inputClasses} onChange={e => setNewPromo(p => ({ ...p, effect: { ...p.effect, request_count: parseInt(e.target.value) || 0 } }))} /></div>
+              )}
+              {newPromo.type === 'popularity_boost' && (
+                <div><label className="block text-sm text-gray-400 mb-1.5">Boost Amount</label><input type="number" min={1} placeholder="e.g. 50" className={inputClasses} onChange={e => setNewPromo(p => ({ ...p, effect: { ...p.effect, boost_amount: parseInt(e.target.value) || 0 } }))} /></div>
+              )}
+              {newPromo.type === 'theme' && (
+                <div><label className="block text-sm text-gray-400 mb-1.5">Theme</label>
+                  <select className={inputClasses} onChange={e => setNewPromo(p => ({ ...p, effect: { ...p.effect, theme_id: e.target.value } }))}>
+                    <option value="">Select theme</option>
+                    {ALL_THEMES.map(t => <option key={t.id} value={t.id}>{t.name} ({t.tier.toUpperCase()})</option>)}
+                  </select>
+                </div>
+              )}
+              {newPromo.type === 'flares' && (
+                <div><label className="block text-sm text-gray-400 mb-1.5">Flare Amount</label><input type="number" min={1} placeholder="e.g. 100" className={inputClasses} onChange={e => setNewPromo(p => ({ ...p, effect: { ...p.effect, flare_amount: parseInt(e.target.value) || 0 } }))} /></div>
+              )}
+            </div>
+            <div className="flex gap-3 mt-6 pt-4 border-t border-white/10">
+              <button onClick={() => setShowModal(false)} className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 text-gray-300 hover:bg-white/10 border border-white/10 transition-colors">Cancel</button>
+              <button onClick={handleCreatePromo} className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg shadow-pink-500/25">Create Promo</button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={deleteModal.isOpen}
-        onClose={handleCancelDelete}
-        onConfirm={handleConfirmDelete}
-        title="Delete Promo Code"
-        message={`Are you sure you want to delete promo code ${deleteModal.promo?.code}? This will permanently remove this promo code and revert all users who are currently using it back to their normal accounts.`}
-        confirmText="Delete Promo Code"
-        type="danger"
-      />
+      <ConfirmationModal isOpen={deleteModal.isOpen} onClose={() => setDeleteModal({ isOpen: false, promo: null })} onConfirm={async () => { if (deleteModal.promo) { await promoService.deletePromoCode(deleteModal.promo.id); toast.success('Promo deleted'); setDeleteModal({ isOpen: false, promo: null }); loadPromos(); } }} title="Delete Promo" message={`Delete promo code ${deleteModal.promo?.code}? Users will be reverted.`} confirmText="Delete" type="danger" />
     </div>
   );
 };

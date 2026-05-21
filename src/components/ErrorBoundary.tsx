@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
+import i18n from "../lib/i18n";
 
 interface Props {
   children: ReactNode;
@@ -64,17 +65,17 @@ class ErrorBoundary extends Component<Props, State> {
       // Show proper error UI for actual app errors
       return (
         <div style={{ padding: '20px', textAlign: 'center' }}>
-          <h2>Oops! Something went wrong</h2>
-          <p>We're working on fixing this issue.</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            style={{ 
-              padding: '10px 20px', 
+          <h2>{i18n.t('error.title')}</h2>
+          <p>{i18n.t('error.message')}</p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '10px 20px',
               marginTop: '10px',
-              cursor: 'pointer' 
+              cursor: 'pointer'
             }}
           >
-            Reload Page
+            {i18n.t('error.reload')}
           </button>
         </div>
       );

@@ -3,9 +3,12 @@ import { supabase } from '../lib/supabaseClient';
 import { Match, Message } from '../types';
 import { useAuthStore } from './authStore';
 import { recordUnmatch, recordMessageSent } from '../services/popularityService';
+import { onesignalService } from '../services/onesignalService';
 import { encryptMessage } from '../lib/crypto';
 import { normalizeMessage } from '../lib/messageUtils';
 import toast from 'react-hot-toast';
+
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface MatchState {
   matches: Match[];
@@ -13,6 +16,8 @@ interface MatchState {
   selectedMatch: Match | null;
   typingUsers: Record<string, string[]>; // matchId -> array of userIds who are typing
   hasNewMatches: boolean;
+  channel: RealtimeChannel | null;
+  realtimeChannel: RealtimeChannel | null;
   fetchMatches: () => Promise<void>;
   selectMatch: (match: Match | null) => void;
   addMessage: (matchId: string, message: Omit<Message, 'id' | 'timestamp' | 'isRead'>) => Promise<void>;
@@ -31,6 +36,8 @@ const initialState = {
   selectedMatch: null,
   typingUsers: {},
   hasNewMatches: false,
+  channel: null,
+  realtimeChannel: null,
 };
 
 export const useMatchStore = create<MatchState>((set, get) => ({
@@ -71,40 +78,120 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   },
 
   addMessage: async (matchId, message) => {
+    const currentUser = useAuthStore.getState().user;
+    // Create optimistic message for immediate UI update
+    const optimisticId = `optimistic-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: optimisticId,
+      matchId: matchId,
+      senderId: message.senderId,
+      content: message.content,
+      type: message.type || 'text',
+      timestamp: new Date().toISOString(),
+      isRead: false,
+      ...(message.reply_to && { reply_to: message.reply_to }),
+      ...(message.reply_content && { reply_content: message.reply_content }),
+    };
+
+    // Add optimistic message immediately
+    set((state) => {
+      const matchIndex = state.matches.findIndex((m) => m.id === matchId);
+      if (matchIndex === -1) return state;
+
+      const updatedMatch = {
+        ...state.matches[matchIndex],
+        messages: [...state.matches[matchIndex].messages, optimisticMessage],
+        lastMessage: optimisticMessage,
+      };
+
+      const newMatches = [...state.matches];
+      newMatches[matchIndex] = updatedMatch;
+
+      // Sort matches by last message time
+      const sortedMatches = newMatches.sort((a, b) => {
+        if (!a.lastMessage) return 1;
+        if (!b.lastMessage) return -1;
+        return new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime();
+      });
+
+      return {
+        matches: sortedMatches,
+        selectedMatch: state.selectedMatch?.id === matchId ? updatedMatch : state.selectedMatch,
+      };
+    });
+
+    // Send to server
     const encryptedContent = message.type === "text" ? encryptMessage(message.content) : message.content;
+
+    const insertData: any = { content: encryptedContent, type: message.type, sender_id: message.senderId, match_id: matchId };
+    if (message.reply_to) insertData.reply_to = message.reply_to;
+    if (message.reply_content) insertData.reply_content = message.reply_content;
 
     const { data, error } = await supabase
       .from("messages")
-      .insert({ content: encryptedContent, type: message.type, sender_id: message.senderId, match_id: matchId })
+      .insert(insertData)
       .select()
       .single();
 
     if (error) {
       console.error("Error sending message:", error);
+      // Remove optimistic message on error
+      set((state) => {
+        const matchIndex = state.matches.findIndex((m) => m.id === matchId);
+        if (matchIndex === -1) return state;
+
+        const updatedMatch = {
+          ...state.matches[matchIndex],
+          messages: state.matches[matchIndex].messages.filter(m => m.id !== optimisticId),
+        };
+
+        const newMatches = [...state.matches];
+        newMatches[matchIndex] = updatedMatch;
+
+        return {
+          matches: newMatches,
+          selectedMatch: state.selectedMatch?.id === matchId ? updatedMatch : state.selectedMatch,
+        };
+      });
       return;
     }
 
-    // The realtime listener will handle adding the message to the state, but we can also add it here for immediate feedback
+    // Replace optimistic message with real message
     const cleanMessage = normalizeMessage(data);
-    // Also record that the user sent a message for popularity score
     recordMessageSent(message.senderId);
+
+    // Send push notification to the other user
+    try {
+      const state = get();
+      const matchData = state.matches.find(m => m.id === matchId);
+      if (matchData && currentUser) {
+        const otherUser = matchData.user1.id === currentUser.id ? matchData.user2 : matchData.user1;
+        const senderName = currentUser.id === matchData.user1.id
+          ? (matchData.user1 as any).display_name || (matchData.user1 as any).name || 'Someone'
+          : (matchData.user2 as any).display_name || (matchData.user2 as any).name || 'Someone';
+        const preview = message.type === 'text' ? message.content : 'Sent you a message';
+        onesignalService.sendMessageNotification(otherUser.id, senderName, preview);
+      }
+    } catch {}
+
     set((state) => {
       const matchIndex = state.matches.findIndex((m) => m.id === matchId);
       if (matchIndex === -1) return state;
 
-      const existingMessages = state.matches[matchIndex].messages || [];
-      const exists = existingMessages.some((m) => m.id === cleanMessage.id);
-      if (exists) return state;
-
+      // Replace optimistic message in-place to avoid visual glitch
+      const updatedMessages = state.matches[matchIndex].messages.map(m =>
+        m.id === optimisticId ? cleanMessage : m
+      );
       const updatedMatch = {
         ...state.matches[matchIndex],
-        messages: [...existingMessages, cleanMessage],
+        messages: updatedMessages,
         lastMessage: cleanMessage,
       };
 
       const newMatches = [...state.matches];
       newMatches[matchIndex] = updatedMatch;
 
+      // Sort matches by last message time
       const sortedMatches = newMatches.sort((a, b) => {
         if (!a.lastMessage) return 1;
         if (!b.lastMessage) return -1;
@@ -172,17 +259,23 @@ export const useMatchStore = create<MatchState>((set, get) => ({
     const match = matches.find(m => m.id === matchId);
     const currentUser = useAuthStore.getState().user;
 
-    if (match && currentUser) {
-      const otherUserId = match.user1.id === currentUser.id ? match.user2.id : match.user1.id;
-      // Record the unmatch for popularity score, but don't block the UI
-      recordUnmatch(currentUser.id, otherUserId).catch(console.error);
-    }
+    if (!match || !currentUser) return;
 
-    const { error } = await supabase.from('matches').delete().eq('id', matchId);
-    if (error) {
-      console.error('Error unmatching:', error);
+    const otherUserId = match.user1.id === currentUser.id ? match.user2.id : match.user1.id;
+    // Record the unmatch for popularity score, but don't block the UI
+    recordUnmatch(currentUser.id, otherUserId).catch(console.error);
+
+    // Use RPC to clean up likes, record mutual dislikes, and delete the match
+    // This bypasses RLS so we can insert dislikes in both directions
+    const { error: rpcError } = await supabase.rpc('unmatch_user', {
+      user_id1: currentUser.id,
+      user_id2: otherUserId,
+    });
+    if (rpcError) {
+      console.error('Error in unmatch RPC:', rpcError);
       return;
     }
+
     set((state) => ({
       matches: state.matches.filter((match) => match.id !== matchId),
       selectedMatch: state.selectedMatch?.id === matchId ? null : state.selectedMatch,
@@ -190,35 +283,58 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   },
 
   initializeRealtime: () => {
-    const channel = supabase.channel('messages-channel');
-    
-    // Handle message inserts
-    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+    const { channel: existingChannel, realtimeChannel: existingRealtime } = get();
+
+    // If already subscribed, return cleanup
+    if (existingChannel || existingRealtime) {
+      return () => {
+        const ch = get().channel || get().realtimeChannel;
+        if (ch) {
+          supabase.removeChannel(ch);
+          set({ channel: null, realtimeChannel: null });
+        }
+      };
+    }
+
+    // Remove any stale channels with same name
+    const channels = supabase.getChannels();
+    channels.forEach(ch => {
+      if (ch.topic === 'realtime-messages') {
+        supabase.removeChannel(ch);
+      }
+    });
+
+    const channel = supabase
+      .channel('realtime-messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        console.warn('[Realtime] INSERT event received:', payload.new?.id, 'from sender:', payload.new?.sender_id);
         const newMessage = normalizeMessage(payload.new);
         const state = get();
-        
         const currentUser = useAuthStore.getState().user;
-        if (newMessage.sender_id !== currentUser?.id) {
-          // Don't show notification if user is already viewing the chat
-          if (state.selectedMatch?.id !== newMessage.match_id) {
-            const sender = state.matches.find(m => m.id === newMessage.match_id)?.user1.id === newMessage.sender_id
-              ? state.matches.find(m => m.id === newMessage.match_id)?.user1
-              : state.matches.find(m => m.id === newMessage.match_id)?.user2;
 
-            navigator.serviceWorker.ready.then(registration => {
-              registration.showNotification('New Message', {
-                body: newMessage.content,
-                icon: sender?.photos?.[0] || '/placeholder-avatar.png',
-              });
-            });
-          } else {
-             // If they are currently viewing the chat, automatically mark this message as read
-             supabase.from('messages').update({ is_read: true }).eq('id', newMessage.id).then();
-             newMessage.is_read = true;
-          }
+        // Skip messages from the current user - they're handled by addMessage
+        if (currentUser && newMessage.senderId === currentUser.id) {
+          console.warn('[Realtime] Skipping own message');
+          return;
         }
 
-        const matchIndex = state.matches.findIndex(m => m.id === newMessage.match_id);
+        // Don't show notification if user is already viewing the chat
+        if (state.selectedMatch?.id !== newMessage.matchId) {
+          const matchData = state.matches.find(m => m.id === newMessage.matchId);
+          const sender = matchData?.user1.id === newMessage.senderId ? matchData.user1 : matchData?.user2;
+          navigator.serviceWorker.ready.then(registration => {
+            registration.showNotification('New Message', {
+              body: newMessage.content,
+              icon: sender?.photos?.[0] || '/placeholder-avatar.png',
+            });
+          });
+        } else {
+          // If they are currently viewing the chat, automatically mark this message as read
+          supabase.from('messages').update({ is_read: true }).eq('id', newMessage.id).then();
+          newMessage.isRead = true;
+        }
+
+        const matchIndex = state.matches.findIndex(m => m.id === newMessage.matchId);
 
         if (matchIndex === -1) {
           get().fetchMatches();
@@ -228,66 +344,72 @@ export const useMatchStore = create<MatchState>((set, get) => ({
         const match = state.matches[matchIndex];
         const existingMessages = match.messages || [];
         const exists = existingMessages.some(m => m.id === newMessage.id);
-        if (exists) return; // Prevent duplicate insert
+        if (exists) return;
 
         const updatedMatch = {
-            ...match,
-            messages: [...existingMessages, newMessage],
-            lastMessage: newMessage,
+          ...match,
+          messages: [...existingMessages, newMessage],
+          lastMessage: newMessage,
         };
 
         const newMatches = [...state.matches];
         newMatches[matchIndex] = updatedMatch;
-        
-        const sortedMatches = newMatches.sort((a, b) => {
-            if (!a.lastMessage) return 1;
-            if (!b.lastMessage) return -1;
-            return new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime();
+
+        newMatches.sort((a, b) => {
+          if (!a.lastMessage) return 1;
+          if (!b.lastMessage) return -1;
+          return new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime();
         });
 
-        set({ 
-            matches: sortedMatches,
-            selectedMatch: state.selectedMatch?.id === newMessage.match_id ? updatedMatch : state.selectedMatch
+        set({
+          matches: newMatches,
+          selectedMatch: state.selectedMatch?.id === newMessage.matchId ? updatedMatch : state.selectedMatch,
         });
-    });
-
-    // Handle message updates (like marking as read)
-    channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
         const updatedMsg = normalizeMessage(payload.new);
         const state = get();
-        const matchIndex = state.matches.findIndex(m => m.id === updatedMsg.match_id);
+        const matchIndex = state.matches.findIndex(m => m.id === updatedMsg.matchId);
         if (matchIndex === -1) return;
-        
+
         set((state) => {
-            const match = state.matches[matchIndex];
-            const updatedMessages = match.messages.map(m => m.id === updatedMsg.id ? { ...m, is_read: updatedMsg.is_read, isRead: updatedMsg.is_read } : m);
-            
-            const updatedMatch = {
-                ...match,
-                messages: updatedMessages,
-                lastMessage: updatedMessages[updatedMessages.length - 1]
-            };
-            
-            const newMatches = [...state.matches];
-            newMatches[matchIndex] = updatedMatch;
-            
-            return {
-                matches: newMatches,
-                selectedMatch: state.selectedMatch?.id === updatedMsg.match_id ? updatedMatch : state.selectedMatch
-            };
+          const match = state.matches[matchIndex];
+          const updatedMessages = match.messages.map(m =>
+            m.id === updatedMsg.id ? { ...m, isRead: updatedMsg.isRead } : m
+          );
+
+          const updatedMatch = {
+            ...match,
+            messages: updatedMessages,
+            lastMessage: updatedMessages[updatedMessages.length - 1],
+          };
+
+          const newMatches = [...state.matches];
+          newMatches[matchIndex] = updatedMatch;
+
+          return {
+            matches: newMatches,
+            selectedMatch: state.selectedMatch?.id === updatedMsg.matchId ? updatedMatch : state.selectedMatch,
+          };
         });
-    });
-
-    // Handle typing events through broadcast
-    channel.on('broadcast', { event: 'typing' }, (payload) => {
-      const { matchId, userId, isTyping: typingStatus } = payload.payload;
-      get().setTyping(matchId, userId, typingStatus);
-    });
-
-    channel.subscribe();
+      })
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        console.warn('[Realtime] Typing broadcast received:', payload.payload);
+        const { matchId, userId, isTyping: typingStatus } = payload.payload;
+        get().setTyping(matchId, userId, typingStatus);
+      })
+      .subscribe((status, err) => {
+        console.warn('[Realtime] Subscribe status:', status, err || '');
+        if (status === 'SUBSCRIBED') {
+          set({ channel, realtimeChannel: channel });
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          set({ channel: null, realtimeChannel: null });
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
+      set({ channel: null, realtimeChannel: null });
     };
   },
 
@@ -302,7 +424,6 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       .or(`and(user1_id.eq.${currentUser.id},user2_id.eq.${matchedUserId}),and(user1_id.eq.${matchedUserId},user2_id.eq.${currentUser.id})`);
 
     if (existingMatches && existingMatches.length > 0) {
-      console.log("Match already exists:", existingMatches[0].id);
       const { data: fullMatch, error: fetchError } = await supabase
         .from('matches')
         .select('*, user1:profiles!user1_id(*), user2:profiles!user2_id(*), messages(*)')
@@ -331,10 +452,16 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       return null;
     }
 
-    set(state => ({ newMatches: [data, ...state.newMatches], hasNewMatches: true }));
+    const newMatch = { ...data, messages: [] };
+    set(state => ({ 
+        matches: [newMatch, ...state.matches],
+        newMatches: [newMatch, ...state.newMatches], 
+        hasNewMatches: true,
+        selectedMatch: newMatch
+    }));
 
-    // Refresh the matches list
-    get().fetchMatches();
+    // Ensure we are subscribed to this new match
+    get().initializeRealtime();
 
     // Send notification to the other user
     const { data: matchedUserProfile } = await supabase.from('profiles').select('name').eq('id', currentUser.id).single();
@@ -345,8 +472,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       type: 'match',
     });
 
-    get().fetchMatches();
-    return data;
+    return newMatch;
   },
 
   setTyping: (matchId: string, userId: string, isTyping: boolean) => {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Notification, NotificationType } from '../../types';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { useNavigate } from 'react-router-dom';
@@ -10,11 +11,10 @@ import UpgradeModal from '../modals/UpgradeModal';
 import { supabase } from '../../lib/supabaseClient';
 import { useModalStore } from '../../stores/modalStore';
 import StrikeInfoModal from '../modals/StrikeInfoModal';
-import PromoDetailsModal from '../modals/PromoDetailsModal';
 
 const FALLBACK_ICON_URL = '/icons/pink_ghost_icon.png';
 
-const formatTimestamp = (timestamp: string | Date): string => {
+const formatTimestamp = (timestamp: string | Date, t: (key: string) => string): string => {
   if (!timestamp || isNaN(new Date(timestamp).getTime())) return '';
 
   const date = new Date(timestamp);
@@ -22,7 +22,7 @@ const formatTimestamp = (timestamp: string | Date): string => {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
   if (isYesterday(date)) {
-    return 'Yesterday';
+    return t('notifications.yesterday');
   }
   return formatDistanceToNow(date, { addSuffix: true });
 };
@@ -36,18 +36,14 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
   if (!notification || !notification.message) {
     return null;
   }
+  const { t } = useTranslation();
   const { user: currentUser, profile } = useAuthStore();
 
   const { markAsRead } = useNotificationStore();
   const navigate = useNavigate();
   const { isStrikeInfoModalOpen, closeStrikeInfoModal, openStrikeInfoModal, isPromoDetailsModalOpen, closePromoDetailsModal, openPromoDetailsModal } = useModalStore();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [promoDetails, setPromoDetails] = useState({
-    code: '',
-    name: '',
-    description: '',
-    expiresAt: ''
-  });
+
 
   const handleNotificationClick = () => {
     if (!notification.isRead) {
@@ -60,7 +56,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
       case 'new-like':
         if (notification.relatedUser?.id) {
           // Check if user is premium
-          const isPremium = profile?.account_type === 'pro' || profile?.accountType === 'vip';
+          const isPremium = profile?.account_type === 'pro' || profile?.account_type === 'vip';
           if (isPremium) {
             navigate(`/user/${notification.relatedUser.id}`);
           } else {
@@ -74,10 +70,13 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
           navigate(`/chat/${notification.relatedUser.id}`);
         }
         break;
+      case 'message-request':
+        // Navigate to chat page where message requests are shown
+        navigate('/chat');
+        break;
       // For system messages or promos, you might want to navigate to a specific screen
       // or do nothing. For now, we do nothing.
       case 'system-message':
-      case 'system':
       case 'promo-redemption':
       default:
         break;
@@ -87,133 +86,75 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
   };
 
   // Correctly check for premium status using account_type
-  const isPremium = profile?.accountType === 'pro' || profile?.accountType === 'vip';
+  const isPremium = profile?.account_type === 'pro' || profile?.account_type === 'vip';
 
-  const handlePromoDetailsClick = () => {
-    // Extract promo details from notification metadata or message
-    const message = notification.message || '';
-    
-    // Try to extract promo code (look for uppercase alphanumeric codes)
-    const codeMatch = message.match(/[A-Z0-9]{4,}/g);
-    const promoCode = (notification as any).promoCode || (codeMatch && codeMatch[0]) || 'PROMO';
-    
-    // Extract promo name - look for quoted text or capitalize first meaningful part
-    const nameMatch = message.match(/"([^"]+)"/);
-    const promoName = (notification as any).promoName || 
-                     nameMatch?.[1] || 
-                     message.split(' ').slice(0, 3).join(' ').replace(/[.,!?]/g, '') ||
-                     'Special Promotion';
-    
-    // Extract description from the message or use default
-    const promoDescription = (notification as any).promoDescription || 
-                           message.replace(/\s+/g, ' ').trim() ||
-                           'You have successfully redeemed a promotional offer!';
-    
-    // Calculate expiration (assume 30 days from notification creation if not specified)
-    const expiresAt = (notification as any).expiresAt || 
-                     (notification.timestamp ? new Date(new Date(notification.timestamp).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString() : 
-                     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
 
-    setPromoDetails({
-      code: promoCode,
-      name: promoName,
-      description: promoDescription,
-      expiresAt: expiresAt
-    });
 
-    openPromoDetailsModal();
+  // Extract sender name from notification message (first word before known patterns)
+  const extractName = (msg: string): string => {
+    if (!msg) return '';
+    // Match "Name viewed/liked/..." patterns
+    const match = msg.match(/^([A-Za-zÀ-ÿ\u0600-\u06FF\u4e00-\u9fff]+)\s+(viewed|liked|sent|wants|has)/i);
+    return match?.[1] || '';
   };
 
   const renderContent = () => {
-    // Use the new isPremium flag
     switch (notification.type) {
-      case 'profile-view':
+      case 'profile-view': {
+        const senderName = extractName(notification.message);
         if (isPremium) {
-          return <p><span className="font-bold">{notification.message.split(' ')[0]}</span> viewed your profile.</p>;
+          return <p><span className="font-bold">{senderName}</span> {t('notifications.viewedProfile', { name: '' }).replace(/^\.?\s*/, '')}</p>;
         } else {
-          return <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowUpgradeModal(true); }} className="text-pink-400 hover:underline">Someone viewed your profile. Upgrade to see who!</button>;
+          return <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowUpgradeModal(true); }} className="text-pink-400 hover:underline">{t('notifications.someoneViewed')}</button>;
         }
-      case 'new-like':
+      }
+      case 'new-like': {
+        const senderName = extractName(notification.message);
         if (isPremium) {
-          return <p><span className="font-bold">{notification.message.split(' ')[0]}</span> liked your profile!</p>;
+          return <p><span className="font-bold">{senderName}</span> {t('notifications.likedProfile', { name: '' }).replace(/^\.?\s*/, '')}</p>;
         } else {
-          return <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowUpgradeModal(true); }} className="text-pink-400 hover:underline">Someone liked you! Upgrade to see who!</button>;
+          return <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowUpgradeModal(true); }} className="text-pink-400 hover:underline">{t('notifications.someoneLiked')}</button>;
         }
+      }
       case 'message-request':
         return (
-          <div className="flex items-center justify-between gap-2">
-            <span>{notification.message || 'Someone wants to chat with you'}</span>
-            <div className="flex gap-2">
-              <button
-                onClick={async (e) => {
-                  e.preventDefault(); e.stopPropagation();
-                  try {
-                    const senderId = (notification as any).actor?.id;
-                    const currentUser = useAuthStore.getState().user;
-                    if (senderId && currentUser) {
-                      await supabase.from('message_requests').update({ status: 'accepted' }).match({ sender_id: senderId, receiver_id: currentUser.id });
-                      useMatchStore.getState().createMatch(senderId);
-                      // Mark notification as read/handled
-                      await supabase.from('notifications').delete().eq('id', notification.id);
-                    }
-                  } catch (_) {}
-                }}
-                className="px-2 py-1 rounded bg-green-600 text-white text-xs"
-                title="Accept and start chat"
-              >
-                Accept
-              </button>
-              <button
-                onClick={async (e) => {
-                  e.preventDefault(); e.stopPropagation();
-                  try {
-                    const senderId = (notification as any).actor?.id;
-                    const currentUser = useAuthStore.getState().user;
-                    if (senderId && currentUser) {
-                      await supabase.from('message_requests').update({ status: 'declined' }).match({ sender_id: senderId, receiver_id: currentUser.id });
-                      await supabase.from('notifications').delete().eq('id', notification.id);
-                    }
-                  } catch (_) {}
-                }}
-                className="px-2 py-1 rounded bg-red-600 text-white text-xs"
-                title="Decline request"
-              >
-                Decline
-              </button>
-            </div>
+          <div>
+            <p>{t('notifications.connectionRequest')}</p>
+            <span className="text-sm text-pink-400 hover:underline">{t('notifications.clickToView')}</span>
           </div>
         );
       case 'system-message':
-      case 'system':
-        // Check if this is a strike notification
         if (notification.message?.includes('strike') || notification.message?.includes('inappropriate language')) {
           return (
             <div>
-              <p>{notification.message}</p>
-              <button onClick={(e) => { e.stopPropagation(); openStrikeInfoModal(); }} className="text-sm text-yellow-400 hover:underline mt-2">Click to view details</button>
+              <p>{t('notifications.strikeWarning')}</p>
+              <button onClick={(e) => { e.stopPropagation(); openStrikeInfoModal(); }} className="text-sm text-yellow-400 hover:underline mt-2">{t('notifications.clickToViewDetails')}</button>
             </div>
           );
         }
-        if (notification.title && notification.title.trim() !== '') {
-          return notification.title;
-        }
-        return `${notification.message.substring(0, 75)}...`;
+        return (
+          <div>
+            <p className="font-semibold">{t('notifications.systemMessage')}</p>
+            <p className="text-white/60 text-xs">{notification.message?.replace(/<[^>]*>/g, '').substring(0, 75)}{notification.message && notification.message.length > 75 ? '...' : ''}</p>
+          </div>
+        );
       case 'promo-redemption':
         return (
           <div>
-            <p>{notification.message}</p>
-            <button onClick={(e) => { e.stopPropagation(); handlePromoDetailsClick(); }} className="text-sm text-yellow-400 hover:underline mt-2">Click to view details</button>
+            <p>{t('notifications.promoRedeemed')}</p>
           </div>
         );
       case 'account-issue':
         return (
           <div>
-            <p>{notification.message}</p>
-            <button onClick={(e) => { e.stopPropagation(); openStrikeInfoModal(); }} className="text-sm text-yellow-400 hover:underline mt-2">Click to view details</button>
+            <p>{t('notifications.accountNotification')}</p>
+            <button onClick={(e) => { e.stopPropagation(); openStrikeInfoModal(); }} className="text-sm text-yellow-400 hover:underline mt-2">{t('notifications.clickToViewDetails')}</button>
           </div>
         );
+      case 'new-message':
+        return <p>{t('notifications.newMessage')}</p>;
       default:
-        return notification.message || 'New notification';
+        return notification.message || t('notifications.newNotification');
     }
   };
 
@@ -231,7 +172,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
       const { data } = supabase.storage.from('avatars').getPublicUrl(userPhoto);
       imageSrc = data.publicUrl;
     }
-  } else if ((notification.type === 'system-message' || notification.type === 'system') && systemPhotoUrl) {
+  } else if (notification.type === 'system-message' && systemPhotoUrl) {
     if (systemPhotoUrl.startsWith('http')) {
       imageSrc = systemPhotoUrl;
     } else {
@@ -261,22 +202,17 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onCli
           </div>
           <div className="flex-1 text-white">
             <div className="text-sm">{renderContent()}</div>
-            <span className="text-xs text-white/50 mt-1">
-              {formatTimestamp(notification.timestamp)}
-            </span>
+            {notification.type !== 'system-message' && (
+              <span className="text-xs text-white/50 mt-1">
+                {formatTimestamp(notification.timestamp, t)}
+              </span>
+            )}
           </div>
         </div>
       </div>
       {showUpgradeModal && <UpgradeModal onClose={() => setShowUpgradeModal(false)} />}
       <StrikeInfoModal isOpen={isStrikeInfoModalOpen} onClose={closeStrikeInfoModal} />
-      <PromoDetailsModal 
-        isOpen={isPromoDetailsModalOpen} 
-        onClose={closePromoDetailsModal}
-        promoCode={promoDetails.code}
-        promoName={promoDetails.name}
-        promoDescription={promoDetails.description}
-        expiresAt={promoDetails.expiresAt}
-      />
+
     </>
   );
 };

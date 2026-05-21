@@ -4,13 +4,15 @@ import { useAuthStore } from './authStore';
 import { useDiscoveryStore } from './discoveryStore';
 import { useMatchStore } from './matchStore';
 import { useAppSettingsStore } from './appSettingsStore';
+import { onesignalService } from '../services/onesignalService';
+import { getPromoBonuses } from '../services/promoBonusService';
 
 interface SwipeState {
   swipeCount: number;
   lastSwipeAt: Date | null;
   rewindCount: number;
   lastRewindAt: Date | null;
-  swipeRight: (likedUserId: string) => Promise<{ matched: boolean }>;
+  swipeRight: (likedUserId: string) => Promise<{ matched: boolean; matchId?: string }>;
   swipeLeft: (swipedUserId: string) => Promise<void>;
   rewind: () => Promise<boolean>; // Return true if rewind was successful
   loadSwipeState: () => void;
@@ -25,7 +27,7 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
   rewindCount: 0,
   lastRewindAt: null,
 
-  loadSwipeState: () => {
+  loadSwipeState: async () => {
     const savedState = localStorage.getItem('swipeState');
     if (savedState) {
       const { swipeCount, lastSwipeAt, rewindCount, lastRewindAt } = JSON.parse(savedState);
@@ -36,6 +38,36 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
       // Reset swipe count if it's a new day
       if (now.getDate() !== lastSwipeDate.getDate() || now.getMonth() !== lastSwipeDate.getMonth() || now.getFullYear() !== lastSwipeDate.getFullYear()) {
         set({ swipeCount: 0, lastSwipeAt: now });
+        localStorage.setItem('swipeState', JSON.stringify({ swipeCount: 0, lastSwipeAt: now, rewindCount, lastRewindAt }));
+
+        // Only notify if user had actually depleted their swipes (hit the limit)
+        // and we haven't already sent the reset notification for this cycle
+        const resetNotifSent = localStorage.getItem('swipeResetNotifSent');
+        const resetNotifDate = resetNotifSent ? new Date(resetNotifSent) : null;
+        const alreadySentToday = resetNotifDate &&
+          now.getFullYear() === resetNotifDate.getFullYear() &&
+          now.getMonth() === resetNotifDate.getMonth() &&
+          now.getDate() === resetNotifDate.getDate();
+
+        if (swipeCount > 0 && !alreadySentToday) {
+          const profile = useAuthStore.getState().profile;
+          const tier = ((profile as any)?.account_type || (profile as any)?.subscription || 'free') as 'free' | 'pro' | 'vip';
+          const settings = useAppSettingsStore.getState().getSettingForTier(tier);
+          const limit = settings?.swipes_per_day ?? (LIMITS[tier] ?? LIMITS.free);
+
+          if (swipeCount >= limit) {
+            const currentUser = useAuthStore.getState().user;
+            if (currentUser) {
+              localStorage.setItem('swipeResetNotifSent', now.toISOString());
+              supabase.from('notifications').insert({
+                user_id: currentUser.id,
+                type: 'swipe-refresh',
+                title: 'Daily Swipes Reset',
+                message: 'Your daily swipes have been reset. You can swipe again!',
+              }).then();
+            }
+          }
+        }
       } else {
         set({ swipeCount, lastSwipeAt: lastSwipeDate });
       }
@@ -57,10 +89,12 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
       return { matched: false };
     }
 
-    // Check swipe limit by tier
+    // Check swipe limit by tier + promo bonuses
     const tier = ((profile as any).account_type || (profile as any).subscription || (profile as any).subscriptionTier || 'free') as 'free' | 'pro' | 'vip';
     const settings = useAppSettingsStore.getState().getSettingForTier(tier);
-    const limit = settings?.swipes_per_day ?? (LIMITS[tier] ?? LIMITS.free);
+    const baseLimit = settings?.swipes_per_day ?? (LIMITS[tier] ?? LIMITS.free);
+    const promoBonuses = await getPromoBonuses(currentUser.id);
+    const limit = promoBonuses.unlimitedSwipes ? Infinity : baseLimit + promoBonuses.bonusSwipes;
     {
       const { swipeCount, lastSwipeAt } = get();
       const now = new Date();
@@ -113,9 +147,9 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
     if (mutualLike) {
       // It's a match!
       const { createMatch } = useMatchStore.getState();
-      await createMatch(likedUserId);
+      const newMatch = await createMatch(likedUserId);
       useDiscoveryStore.getState().removePotentialMatch(likedUserId);
-      return { matched: true };
+      return { matched: true, matchId: newMatch?.id };
     } else {
       // Create a notification for the liked user if it's not a match yet
       await supabase.from('notifications').insert({
@@ -125,6 +159,17 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
         title: 'You have a new like!',
         message: `${profile?.name || 'Someone'} liked your profile.`
       });
+
+      // Send push notification for the like
+      try {
+        await onesignalService.sendLikeNotification(
+          likedUserId,
+          profile?.name || 'Someone'
+        );
+      } catch (error) {
+        console.error('Failed to send like push notification:', error);
+        // Continue even if push notification fails
+      }
     }
 
     useDiscoveryStore.getState().removePotentialMatch(likedUserId);
@@ -146,7 +191,7 @@ export const useSwipeStore = create<SwipeState>((set, get) => ({
     }
 
 // Increment swipe count for popularity score
-    incrementSwipeCount(currentUser.id);
+    supabase.rpc('increment_swipe_count', { p_user_id: currentUser.id });
 
     // We still remove from discovery locally for immediate feedback
     useDiscoveryStore.getState().removePotentialMatch(swipedUserId);

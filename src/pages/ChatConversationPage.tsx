@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMatchStore } from '../stores/matchStore.tsx';
 import ChatConversation from '../components/chat/ChatConversation';
+import { useTranslation } from 'react-i18next';
 
 const ChatConversationPage: React.FC = () => {
+  const { t } = useTranslation();
   const { matchId } = useParams<{ matchId: string }>();
   const { matches, newMatches, fetchMatches, selectMatch } = useMatchStore();
   const [isLoading, setIsLoading] = useState(false);
@@ -32,11 +34,11 @@ const ChatConversationPage: React.FC = () => {
   }, [fetchMatches, matchId, selectedMatch]);
 
   if (!matchId) {
-    return <div>Match not found</div>;
+    return <div>{t('chat.matchNotFound')}</div>;
   }
 
   if (!selectedMatch) {
-    return <div>{isLoading ? 'Loading…' : 'Match not found'}</div>;
+    return <div>{isLoading ? t('chat.loading') : t('chat.matchNotFound')}</div>;
   }
 
   return <ChatConversation match={selectedMatch} />;

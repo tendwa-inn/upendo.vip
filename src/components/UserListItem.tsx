@@ -40,11 +40,13 @@ const UserListItem: React.FC<UserListItemProps> = ({ user, type, onLikeBack }) =
   const displayAge = getAge();
 
   // Check if user has active profile viewing promo
-  const hasProfileViewPromo = profile?.canViewProfilesExpiresAt 
-    ? new Date(profile.canViewProfilesExpiresAt) > new Date()
+  const profileViewsExpiry = (profile as any)?.can_view_profiles_expires_at || (profile as any)?.canViewProfilesExpiresAt;
+  const hasProfileViewPromo = profileViewsExpiry
+    ? new Date(profileViewsExpiry) > new Date()
     : false;
-    
-  const canViewProfile = isPremium || hasProfileViewPromo;
+
+  // Views unlock with promo OR premium; likes require premium only
+  const canViewProfile = type === 'view' ? (isPremium || hasProfileViewPromo) : isPremium;
   const isFree = !canViewProfile;
 
   // swipe-to-dismiss

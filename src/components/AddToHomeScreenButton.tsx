@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Share } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 
 const AddToHomeScreenButton: React.FC = () => {
+  const { t } = useTranslation();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isAppleDevice, setIsAppleDevice] = useState(false);
 
@@ -45,10 +47,10 @@ const AddToHomeScreenButton: React.FC = () => {
               </div>
               <div className="ml-3 flex-1">
                 <p className="text-sm font-medium">
-                  To install Upendo:
+                  {t('a2hs.instructions')}
                 </p>
                 <p className="mt-1 text-sm text-gray-300">
-                  Tap the 'Share' icon and then 'Add to Home Screen'.
+                  {t('a2hs.share')}
                 </p>
               </div>
             </div>
@@ -58,7 +60,7 @@ const AddToHomeScreenButton: React.FC = () => {
               onClick={() => toast.dismiss(t.id)}
               className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-pink-500 hover:text-pink-400 focus:outline-none"
             >
-              Close
+              {t('a2hs.close')}
             </button>
           </div>
         </div>
@@ -76,7 +78,7 @@ const AddToHomeScreenButton: React.FC = () => {
         setDeferredPrompt(null);
       });
     } else {
-        toast.error("Your browser doesn't support adding to the home screen, or the app is already installed.");
+        toast.error(t('a2hs.notSupported'));
     }
   };
   
@@ -89,8 +91,8 @@ const AddToHomeScreenButton: React.FC = () => {
     <button
       onClick={handleInstallClick}
       className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors md:hidden"
-      aria-label="Add to Home Screen"
-      title="Add to Home Screen"
+      aria-label={t('a2hs.label')}
+      title={t('a2hs.label')}
     >
       <Download className="w-5 h-5 text-white" />
     </button>
